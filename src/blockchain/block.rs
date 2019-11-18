@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use std::convert::TryInto;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -13,15 +13,11 @@ type HashType = [u8; 32];
 
 /// Represents a block in the blockchain
 ///
-#[derive(Serialize, Deserialize)]
-pub struct Block<T>
-where
-    T: AsRef<[u8]> + Serialize + Deserialize,
-{
+pub struct Block<T: AsRef<[u8]>> {
     /// Hash of the parent block
     parent: u64,
     /// Timestamp for when the block was generated. Specified in UNIX epoch
-    timestamp: u128,
+    timestamp: u64,
     /// Random nonce
     rand_nonce: u64,
     /// Nonce. Changed to produce correct hash
@@ -32,7 +28,7 @@ where
 
 // ========================================================================== //
 
-impl<T: AsRef<[u8]>, Serialize, Deserialize> Block<T> {
+impl<T: AsRef<[u8]>> Block<T> {
     /// Create a new block with the specified parent and data
     ///
     pub fn new(parent: u64, data: T) -> Block<T> {
@@ -41,7 +37,7 @@ impl<T: AsRef<[u8]>, Serialize, Deserialize> Block<T> {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Could not retrieve a correct UNIX epoch timestamp")
-            .as_micros();
+            .as_millis() as u64;
         Block {
             parent,
             timestamp,
@@ -53,7 +49,7 @@ impl<T: AsRef<[u8]>, Serialize, Deserialize> Block<T> {
 
     /// Returns the timestamp when the block was created. In UNIX epoch
     ///
-    pub fn get_timestamp(&self) -> u128 {
+    pub fn get_timestamp(&self) -> u64 {
         self.timestamp
     }
 
@@ -85,6 +81,7 @@ impl<T: AsRef<[u8]>, Serialize, Deserialize> Block<T> {
         let mut hasher = Sha256::new();
         hasher.input(self.parent.to_le_bytes());
         hasher.input(self.timestamp.to_le_bytes());
+        hasher.input(self.rand_nonce.to_le_bytes());
         hasher.input(self.nonce.to_le_bytes());
         hasher.input(&self.data);
         hasher
@@ -92,6 +89,14 @@ impl<T: AsRef<[u8]>, Serialize, Deserialize> Block<T> {
             .as_slice()
             .try_into()
             .expect("Sha256 must produce a digest of 256-bits")
+    }
+}
+
+// ========================================================================== //
+
+impl<T: AsRef<[u8]>> Serialize for Block<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u64(self.parent)
     }
 }
 
