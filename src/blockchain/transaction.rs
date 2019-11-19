@@ -1,3 +1,4 @@
+use crate::blockchain::hash::{self, Hash, Hashable};
 use rust_sodium::crypto::sign::{
     self, ed25519::sign, ed25519::verify, ed25519::PublicKey, ed25519::SecretKey,
 };
@@ -123,6 +124,12 @@ impl Transaction {
         }
         buf.extend(&self.pub_key_output);
         buf
+    }
+}
+
+impl Hashable for Transaction {
+    fn calc_hash(&self) -> Hash {
+        hash::obj_hash(&self.signature)
     }
 }
 
