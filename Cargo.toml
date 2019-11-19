@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 serde = { version = "1.0.102", features = ["derive"] }
 sha2 = "0.8.0"
+rust_sodium = "0.10.2"
+bincode = "1.2.0"
