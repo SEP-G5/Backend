@@ -1,7 +1,7 @@
-mod block;
-mod hash;
-mod transaction;
-mod util;
+pub mod block;
+pub mod hash;
+pub mod transaction;
+pub mod util;
 
 // ========================================================================== //
 
@@ -38,20 +38,51 @@ impl Blockchain {
         Blockchain { blocks: Vec::new() }
     }
 
-    /// Push a new block at the end of the blockchain. The block is first
-    /// verified using "Blockchain::check_valid()"
+    /// Push a new block at the end of the blockchain.
+    ///
+    /// # Requirements
+    /// Before the block can actually be pushed, some conditions must be met.
+    /// The user will get an error back describing what happen, if an error
+    /// occured.
+    ///
+    /// 1. The parent (previous) block for the one being pushed must match that
+    ///    of the last block in the chain. Otherwise we are missing blocks or
+    ///    the block is simply invalid.
+    /// 2. All transactions in the block must be valid. This further means that:
+    ///    - All transactions are correctly signed; and
+    ///    - Inputs and outputs must be correct for the type of block
+    ///      (register or transfer).
+    ///
+    /// # Longest chain
+    /// The next concept is about longest chains. This check occurs if the block
+    /// happens to refer to a parent (previous block hash) that is not actually
+    /// the last block in the chain. We then need to determine, through asking
+    /// other nodes, if the block is simply missing from our chain or if the
+    /// block is invalid.
+    ///
     ///
     pub fn push(&mut self, block: BlockType) -> Result<(), BlockchainErr> {
-        Blockchain::check_valid_parent(self, &block)?;
+        // Bad parent. Means either chain out of date or invalid block
+        if let Err(e) = Blockchain::check_valid_parent(self, &block) {
+            if e != BlockchainErr::BadParent {
+                return Err(e);
+            }
+            Blockchain::try_complete_chain(self, &block)?;
+        };
         Blockchain::check_valid_transactions(self, &block)?;
         self.blocks.push(block);
         Ok(())
     }
 
+    /// Returns the length of the blockchain in number of blocks stored in it.
+    pub fn len(&self) -> usize {
+        self.blocks.len()
+    }
+
     /// Checks if the specified block is a valid next block in the chain by only
     /// checking that the parent is correct
     ///
-    pub fn check_valid_parent(&self, block: &BlockType) -> Result<(), BlockchainErr> {
+    fn check_valid_parent(&self, block: &BlockType) -> Result<(), BlockchainErr> {
         // Verify parent
         let prev_hash = if self.blocks.len() >= 1 {
             self.blocks[self.len() - 1].calc_hash()
@@ -67,7 +98,7 @@ impl Blockchain {
     /// Checks if the specified block is a valid next block in the chain by
     /// checking that each transaction in the block is valid.
     ///
-    pub fn check_valid_transactions(&self, block: &BlockType) -> Result<(), BlockchainErr> {
+    fn check_valid_transactions(&self, block: &BlockType) -> Result<(), BlockchainErr> {
         // Verify transaction
         if let Err(e) = block.get_data().verify() {
             return Err(BlockchainErr::BadTransaction(e));
@@ -106,13 +137,13 @@ impl Blockchain {
             }
         }
 
+        ///
+        fn try_complete_chain(&self, block: &BlockType) -> Result<(), BlockchainErr) {
+            Ok(())
+        }
+
         // Find the last block that matches ID
         Ok(())
-    }
-
-    /// Returns the length of the blockchain in number of blocks stored in it.
-    pub fn len(&self) -> usize {
-        self.blocks.len()
     }
 }
 
@@ -137,7 +168,7 @@ impl Display for Blockchain {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_sodium::crypto::sign::{self, ed25519::PublicKey, ed25519::SecretKey};
+    use rust_sodium::crypto::sign;
 
     #[test]
     fn test_create() {
