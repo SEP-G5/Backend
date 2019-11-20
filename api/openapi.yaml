@@ -1,0 +1,144 @@
+openapi: 3.0.0
+servers: []
+info:
+  description: Blockchain for Bikes API
+  version: "1.0.0"
+  title: Backend API
+  license:
+    name: MIT
+    url: 'https://opensource.org/licenses/MIT'
+externalDocs:
+  description: Github of the project
+  url: 'https://github.com/SEP-G5/Backend'
+paths:
+  /transaction:
+    post:
+      summary: Create a new transaction
+      operationId: createTransaction
+      description: |
+        Create a new transaction
+      requestBody:
+        description: The valid and signed transaction
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Transaction'
+      responses:
+        '200':
+          description: return the transaction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Bad Request, missing attributes in the request, transaction not valid (not signed...)
+        '401':
+          description: |
+            In a Registration, the bike has already an owner
+            In a Transfer, the public key is not the owner of the bike
+    get:
+      summary: Get transactions
+      description: Get transactions
+      operationId: getTransactions
+      parameters:
+        - name: limit
+          in: query
+          description: limits the number of records returned 
+          required: false
+          explode: true
+          schema:
+            type: number
+            default: 10
+            minimum: 0
+        - name: skip
+          in: query
+          description: Useful for pagination
+          required: false
+          explode: true
+          schema:
+            type: number
+            default: 0
+            minimum: 0
+        - name: publicKey
+          in: query
+          description: public key
+          required: false
+          explode: true
+          schema:
+            type: string
+            description: 'public key'
+            example: '5881b25d947ca4842c2cbec1697bbc9ce3da7d3fa9f688f2f5914b1ac2bf17c6'
+        - name: id
+          in: query
+          description: bike id
+          required: false
+          explode: true
+          schema:
+            type: string
+            description: 'Serial Number'
+            example: 'SN1337BIKE'
+      responses:
+        '200':
+          description: A list of transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+  /peer:
+    get:
+      summary: Get peers
+      description: Get peers
+      operationId: discoverPeers
+      responses:
+        '200':
+          description: A list of peers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Peer'
+components:
+  schemas:
+    Transaction:
+      type: object
+      required:
+        - id
+        - timestamp
+        - publicKeyInput
+        - publicKeyOutput
+        - signature
+      properties:
+        id:
+          type: string
+          description: 'Serial number'
+          example: 'SN1337BIKE'
+        timestamp:
+          type: integer
+          description: 'seconds since unix epoch (1970)'
+          minimum: 0
+          example: 1574250819
+        publicKeyInput:
+          type: string
+          description: 'public key input'
+          example: '85d23c7ff49ff8f64115cbe76075b9f225d1c028449a8b426591ffb3cbd7741b'
+        publicKeyOutput:
+          type: string
+          description: 'public key output'
+          example: '5881b25d947ca4842c2cbec1697bbc9ce3da7d3fa9f688f2f5914b1ac2bf17c6'
+        signature:
+          type: string
+          description: 'signature of the transaction'
+          example: 'da8833f4b107173987e665f6e2daef36e66f2c4f36facc79e738be6c5adcaeebe13ead8345c2c040de0713b52bdbcce2931914f15cf39de01152bc798564500d534e3133333742494b454329d55d000000005881b25d947ca4842c2cbec1697bbc9ce3da7d3fa9f688f2f5914b1ac2bf17c6'   
+    Peer:
+      type: object
+      required:
+        - ip
+      properties:
+        ip:
+          type: string
+          description: 'IP of the peer'
+          example: '95.15.156.35'
