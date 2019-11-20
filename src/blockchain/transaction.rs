@@ -92,7 +92,7 @@ impl Transaction {
         let (pk, sk) = sign::gen_keypair();
         let mut t = Transaction {
             id: t_prev.id.clone(),
-            timestamp: make_timestamp(),
+            timestamp: util::make_timestamp(),
             pub_key_input: Some(t_prev.pub_key_output.clone()),
             pub_key_output: pk.as_ref().to_vec(),
             signature: Vec::new(),

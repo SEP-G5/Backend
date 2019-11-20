@@ -8,12 +8,14 @@ pub mod util;
 use block::Block;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
+use std::fs;
+use std::usize;
 use transaction::Transaction;
 
 // ========================================================================== //
 
 #[derive(Debug)]
-pub enum BlockchainErr {
+pub enum ChainErr {
     BadParent,
     NonUniqueTransactionID,
     BadTransaction(String),
@@ -21,21 +23,68 @@ pub enum BlockchainErr {
 
 // ========================================================================== //
 
+/// Type of the blocks that are stored in the blockchain
 type BlockType = Block<Transaction>;
 
-/// Represents the blockchain structure
+// ========================================================================== //
+
+/// A single node in the blockchain. Each node contains a list of possible
+/// blocks at this position. The reason why multiple blocks are kept is to be
+/// able to monitor the longest chains.
 ///
 #[derive(Serialize, Deserialize)]
-pub struct Blockchain {
+pub struct Node {
+    /// List of potential blocks at each position in the chain. The index in the
+    /// vector represents the position.
     blocks: Vec<BlockType>,
 }
 
 // ========================================================================== //
 
-impl Blockchain {
+impl Node {
+    /// Construct a new node without any blocks assigned to it
+    ///
+    pub fn new() -> Node {
+        Node { blocks: vec![] }
+    }
+
+    /// Add a block to the node.
+    ///
+    pub fn add_block(&mut self, block: BlockType) {
+        self.blocks.push(block)
+    }
+
+    /// Returns a reference to the vector of blocks stored at the node
+    pub fn get_blocks(&self) -> &Vec<BlockType> {
+        &self.blocks
+    }
+}
+
+// ========================================================================== //
+
+/// The main blockchain structure. This contains the list of nodes that makes up
+/// the blockchain.
+///
+#[derive(Serialize, Deserialize)]
+pub struct Chain {
+    /// List of the nodes that make up the chain
+    nodes: Vec<Node>,
+}
+
+// ========================================================================== //
+
+impl Chain {
     /// Construct a new empty blockchain.
-    pub fn new() -> Blockchain {
-        Blockchain { blocks: Vec::new() }
+    pub fn new() -> Chain {
+        let mut chain = Chain { nodes: vec![] };
+
+        // Add the "genesis" block
+        chain.nodes.push(Node::new());
+        let (t, t_s) = Transaction::debug_make_register(format!("GENESIS_BIKE"));
+        let b = Block::new(hash::EMPTY_HASH, t);
+        chain.nodes[0].add_block(b);
+
+        chain
     }
 
     /// Push a new block at the end of the blockchain.
@@ -61,103 +110,72 @@ impl Blockchain {
     /// block is invalid.
     ///
     ///
-    pub fn push(&mut self, block: BlockType) -> Result<(), BlockchainErr> {
-        // Bad parent. Means either chain out of date or invalid block
-        if let Err(e) = Blockchain::check_valid_parent(self, &block) {
-            if e != BlockchainErr::BadParent {
-                return Err(e);
+    pub fn push(&mut self, block: BlockType) -> Result<(), ChainErr> {
+        // Find parent index
+        let mut parent_index: usize = usize::MAX;
+        for (i, node) in self.nodes.iter().enumerate() {
+            for b in node.get_blocks().iter() {
+                if b.calc_hash() == *block.get_parent_hash() {
+                    parent_index = i;
+                }
             }
-            Blockchain::try_complete_chain(self, &block)?;
-        };
-        Blockchain::check_valid_transactions(self, &block)?;
-        self.blocks.push(block);
+        }
+        if parent_index == usize::MAX {
+            return Err(ChainErr::BadParent);
+        }
+        println!("Parent index: {}", parent_index);
+
+        // Extend node list if necessary
+        if parent_index >= self.nodes.len() - 1 {
+            self.nodes.push(Node::new());
+            println!("Added node to extend to length: {}", self.nodes.len());
+        }
+
+        // Add block
+        self.nodes[parent_index + 1].add_block(block);
+
         Ok(())
     }
 
-    /// Returns the length of the blockchain in number of blocks stored in it.
-    pub fn len(&self) -> usize {
-        self.blocks.len()
+    pub fn block_count(&self) -> usize {
+        self.nodes.iter().map(|n| n.get_blocks().len()).sum()
     }
 
-    /// Checks if the specified block is a valid next block in the chain by only
-    /// checking that the parent is correct
-    ///
-    fn check_valid_parent(&self, block: &BlockType) -> Result<(), BlockchainErr> {
-        // Verify parent
-        let prev_hash = if self.blocks.len() >= 1 {
-            self.blocks[self.len() - 1].calc_hash()
-        } else {
-            hash::EMPTY_HASH
-        };
-        if prev_hash != *block.get_parent_hash() {
-            return Err(BlockchainErr::BadParent);
-        }
-        Ok(())
+    pub fn get_genesis_block(&self) -> &BlockType {
+        &self.nodes[0].get_blocks()[0]
     }
 
-    /// Checks if the specified block is a valid next block in the chain by
-    /// checking that each transaction in the block is valid.
-    ///
-    fn check_valid_transactions(&self, block: &BlockType) -> Result<(), BlockchainErr> {
-        // Verify transaction
-        if let Err(e) = block.get_data().verify() {
-            return Err(BlockchainErr::BadTransaction(e));
-        }
-        // Is this a registration?
-        if !block.get_data().has_input() {
-            // Check for unique ID
-            for b in self.blocks.iter().rev() {
-                if b.get_data().get_id() == block.get_data().get_id() {
-                    return Err(BlockchainErr::NonUniqueTransactionID);
-                }
-            }
-        } else {
-            // Or a transaction?
-            let mut prev: Option<&BlockType> = None;
-            for b in self.blocks.iter().rev() {
-                if b.get_data().get_id() == block.get_data().get_id() {
-                    prev = Some(&b);
-                    break;
-                }
-            }
+    pub(crate) fn write_dot(&self, path: &str) {
+        let mut dot = format!("digraph Blockchain {{\n");
 
-            match prev {
-                Some(b) => {
-                    if !block.get_data().verify_is_next(b.get_data()) {
-                        return Err(BlockchainErr::BadTransaction(format!(
-                            "Input to transaction is not valid"
-                        )));
+        // Build graph
+        let mut idx = 0;
+        for (i, node) in self.nodes.iter().enumerate() {
+            let idx_next = idx + node.get_blocks().len();
+            for (j, b) in node.get_blocks().iter().enumerate() {
+                let h = &hash::hash_to_str(&b.calc_hash())[0..6];
+                let tid = b.get_data().get_id();
+                dot.push_str(&format!(
+                    "\t{}[label=\"{}...\\nID: {}\", shape=box];\n",
+                    idx + j,
+                    h,
+                    tid
+                ));
+                // Handle children if available
+                if i != self.nodes.len() - 1 {
+                    for (k, b1) in self.nodes[i + 1].get_blocks().iter().enumerate() {
+                        if *b1.get_parent_hash() == b.calc_hash() {
+                            dot.push_str(&format!("\t{} -> {};\n", idx + j, idx_next + k));
+                        }
                     }
                 }
-                None => {
-                    return Err(BlockchainErr::BadTransaction(format!(
-                        "Input to transaction does not exist"
-                    )))
-                }
             }
+            idx = idx_next;
         }
 
-        ///
-        fn try_complete_chain(&self, block: &BlockType) -> Result<(), BlockchainErr) {
-            Ok(())
-        }
-
-        // Find the last block that matches ID
-        Ok(())
-    }
-}
-
-// ========================================================================== //
-
-impl Display for Blockchain {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let block_msg: String = self.blocks.iter().map(|b| format!("\n\t{}", b)).collect();
-        write!(
-            f,
-            "Blockchain {{ len: {}, blocks: {}\n}}",
-            self.len(),
-            block_msg
-        )
+        // Write to file
+        dot.push_str("}");
+        fs::write(path, &dot).expect("Failed to write dot file");
     }
 }
 
@@ -172,44 +190,39 @@ mod tests {
 
     #[test]
     fn test_create() {
-        let chain = Blockchain::new();
-        assert_eq!(chain.len(), 0, "Newly created blockchains must be empty");
+        let chain = Chain::new();
+        //assert_eq!(chain.len(), 0, "Newly created blockchains must be empty");
     }
 
     #[test]
     fn test_append() {
-        let mut chain = Blockchain::new();
+        let mut chain = Chain::new();
 
-        // First transaction
-        let (t0_p, t0_s) = sign::gen_keypair();
-        let mut t0 = Transaction::new(format!("SN1337BIKE"), None, t0_p.as_ref().to_vec());
-        t0.sign(&t0_s);
-
-        // Second transaction
-        let (t1_p, _) = sign::gen_keypair();
-        let mut t1 = Transaction::new_debug(
-            t0.get_id().clone(),
-            util::make_timestamp(),
-            Some(t0.get_public_key_output().clone()),
-            t1_p.as_ref().to_vec(),
-            Vec::new(),
-        );
-        t1.sign(&t0_s);
+        // Transactions
+        let (t0, t0_s) = Transaction::debug_make_register(format!("SN1337BIKE"));
+        let (t1, t1_s) = Transaction::debug_make_transfer(&t0, &t0_s);
 
         // Blocks
-        let block_0 = Block::new(hash::EMPTY_HASH, t0);
+        let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
         let block_1 = Block::new(block_0.calc_hash(), t1);
 
         chain.push(block_0).expect("Failed to add block 0:");
         chain.push(block_1).expect("Failed to add block 1:");
 
-        assert_eq!(chain.len(), 2, "Blockchain should contain 4 blocks");
+        assert_eq!(
+            chain.block_count(),
+            3,
+            "Blockchain should contain 3 blocks (+1 for genesis)"
+        );
+
+        chain.write_dot("chain.dot");
     }
 
+    /*
     #[test]
     #[should_panic]
     fn test_append_invalid_id() {
-        let mut chain = Blockchain::new();
+        let mut chain = Chain::new();
 
         // First transaction
         let (t0_p, t0_s) = sign::gen_keypair();
@@ -257,4 +270,5 @@ mod tests {
         chain.push(block_0).expect("Failed to add block 0:");
         chain.push(block_1).expect("Failed to add block 1:");
     }
+    */
 }
