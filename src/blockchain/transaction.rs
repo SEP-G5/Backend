@@ -38,7 +38,7 @@ impl Display for Transaction {
         write!(
             f,
             "Transaction:{{ id: {}, timestamp: {}, public_key_input: {:#?}, \
-             public_key_output: {:#?}, signature: {:#?}}}",
+             public_key_output: {:#?}, signature: {:#?} }}",
             self.id,
             self.timestamp,
             k_input,
@@ -60,7 +60,7 @@ impl Transaction {
     }
 
     /// Make debug transaction
-    pub fn new_debug(
+    /*pub fn new_debug(
         id: String,
         timestamp: util::Timestamp,
         pub_key_input: Option<PubKey>,
@@ -73,7 +73,32 @@ impl Transaction {
             pub_key_input,
             pub_key_output,
             signature,
-        }
+        }*/
+
+    /// @param id The id of the item, such as serial number of a bike.
+    pub fn debug_make_register(id: String) -> (Transaction, SecretKey) {
+        let (pk, sk) = sign::gen_keypair();
+        let mut t = Transaction::new(id, None, pk.as_ref().to_vec());
+        t.sign(&sk);
+        (t, sk)
+    }
+
+    /// @param t_prev The previous transaction
+    /// @param t_sk The previous secret key
+    pub fn debug_make_transfer(
+        t_prev: &Transaction,
+        sk_prev: &SecretKey,
+    ) -> (Transaction, SecretKey) {
+        let (pk, sk) = sign::gen_keypair();
+        let mut t = Transaction {
+            id: t_prev.id.clone(),
+            timestamp: make_timestamp(),
+            pub_key_input: Some(t_prev.pub_key_output.clone()),
+            pub_key_output: pk.as_ref().to_vec(),
+            signature: Vec::new(),
+        };
+        t.sign(&sk_prev);
+        (t, sk)
     }
 
     /// Sign a transaction. Make sure all data is filled in, except
@@ -173,8 +198,7 @@ mod tests {
     #[test]
     fn test_sign_verify() {
         // make a transaction, sign it and verify
-        let (pk, sk) = sign::gen_keypair();
-        let mut t = Transaction::new(format!("SN1337BIKE"), None, pk.as_ref().to_vec());
+        let (mut t, sk) = Transaction::debug_make_register(format!("SN1337BIKE"));
         t.sign(&sk);
         assert_eq!(t.verify(), Ok(()));
 
@@ -186,35 +210,17 @@ mod tests {
     #[test]
     fn test_verify_is_next() {
         // T0 - make the first "register" transaction
-        let (pk_0, sk_0) = sign::gen_keypair();
-        let mut t_0 = Transaction::new(format!("SN1337BIKE"), None, pk_0.as_ref().to_vec());
-        t_0.sign(&sk_0);
-        assert_eq!(t_0.verify(), Ok(()));
+        let (t0, sk0) = Transaction::debug_make_register(format!("SN1337BIKE"));
+        assert_eq!(t0.verify(), Ok(()));
 
         // T1 - make the second "transfer" transaction
-        let (pk_1, sk_1) = sign::gen_keypair();
-        let mut t_1 = Transaction {
-            id: t_0.id.clone(),
-            timestamp: util::make_timestamp(),
-            pub_key_input: Some(t_0.pub_key_output.clone()),
-            pub_key_output: pk_1.as_ref().to_vec(),
-            signature: Vec::new(),
-        };
-        t_1.sign(&sk_0); // We use the private key of t_0 here!
-        assert_eq!(t_1.verify(), Ok(()));
-        assert_eq!(t_1.verify_is_next(&t_0), true);
+        let (t1, sk1) = Transaction::debug_make_transfer(&t0, &sk0);
+        assert_eq!(t1.verify(), Ok(()));
+        assert_eq!(t1.verify_is_next(&t0), true);
 
         // T2 - make the third "transfer" transaction
-        let (pk_2, sk_2) = sign::gen_keypair();
-        let mut t_2 = Transaction {
-            id: t_1.id.clone(),
-            timestamp: util::make_timestamp(),
-            pub_key_input: Some(t_1.pub_key_output.clone()),
-            pub_key_output: pk_2.as_ref().to_vec(),
-            signature: Vec::new(),
-        };
-        t_2.sign(&sk_1); // We use the private key of t_1 here!
-        assert_eq!(t_2.verify(), Ok(()));
-        assert_eq!(t_2.verify_is_next(&t_1), true);
+        let (t2, sk2) = Transaction::debug_make_transfer(&t1, &sk1);
+        assert_eq!(t2.verify(), Ok(()));
+        assert_eq!(t2.verify_is_next(&t1), true);
     }
 }
