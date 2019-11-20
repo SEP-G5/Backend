@@ -1,3 +1,3 @@
 mod block;
 mod hash;
-mod transaction;
+pub mod transaction;
