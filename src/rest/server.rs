@@ -1,5 +1,6 @@
 use crate::blockchain::transaction::{PubKey, Signature, Timestamp, Transaction};
 use base64::{decode_config, encode};
+use rocket::{self, *};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{self, Value};
 
@@ -33,19 +34,17 @@ struct Peers {
 // ============================================================ //
 
 fn make_response(ok: bool, msg: &str) -> String {
-    let r = Response { ok, msg: String::from(msg) };
+    let r = Response {
+        ok,
+        msg: String::from(msg),
+    };
     serde_json::to_string(&r).expect("failed to convert to json")
 }
 
 fn json_transaction_to_transaction(v: Value) -> Result<Transaction, String> {
     let id: String = match v["id"].as_str() {
         Some(s) => s.to_string(),
-        None => {
-            return Err(make_response(
-                false,
-                "Could not parse id as String",
-            ))
-        }
+        None => return Err(make_response(false, "Could not parse id as String")),
     };
 
     let timestamp: Timestamp = match v["timestamp"].as_u64() {
@@ -100,12 +99,7 @@ fn json_transaction_to_transaction(v: Value) -> Result<Transaction, String> {
                 ))
             }
         },
-        None => {
-            return Err(make_response(
-                false,
-                "Could not parse signature as String",
-            ))
-        }
+        None => return Err(make_response(false, "Could not parse signature as String")),
     };
 
     Ok(Transaction::from_details(
@@ -180,10 +174,7 @@ fn info(data: String) -> String {
             "info request has both public key and id, can only have one.",
         );
     } else if !pk && !id {
-        return make_response(
-            false,
-            "info request has no public key or id, must have one",
-        );
+        return make_response(false, "info request has no public key or id, must have one");
     }
 
     // TODO not have this default fail msg
