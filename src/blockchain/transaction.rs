@@ -3,7 +3,7 @@ use crate::blockchain::util;
 use rust_sodium::crypto::sign::{
     self, ed25519::sign, ed25519::verify, ed25519::PublicKey, ed25519::SecretKey,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
 
 type PubKey = Vec<u8>;
@@ -177,7 +177,10 @@ impl Transaction {
         &self.id
     }
 
-    pub(crate) fn set_id(&mut self, id: &str) {
+    /// Function to set the ID of a transaction. This is only available in test
+    /// builds
+    #[cfg(test)]
+    pub fn set_id(&mut self, id: &str) {
         self.id = String::from(id)
     }
 
@@ -229,7 +232,7 @@ mod tests {
         assert_eq!(t1.verify_is_next(&t0), true);
 
         // T2 - make the third "transfer" transaction
-        let (t2, sk2) = Transaction::debug_make_transfer(&t1, &sk1);
+        let (t2, _) = Transaction::debug_make_transfer(&t1, &sk1);
         assert_eq!(t2.verify(), Ok(()));
         assert_eq!(t2.verify_is_next(&t1), true);
     }

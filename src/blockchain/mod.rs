@@ -7,7 +7,6 @@ pub mod util;
 
 use block::Block;
 use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display, Formatter};
 use std::fs;
 use std::usize;
 use transaction::Transaction;
@@ -192,10 +191,19 @@ impl Chain {
         &self.nodes[0].get_blocks()[0]
     }
 
+    /// Returns the last block that is associated with a transaction that has
+    /// the specified ID
+    pub fn get_block_for_id(&self, id: &str) -> Option<&BlockType> {
+        /*for node in self.nodes.iter().rev() {
+            for block in node.get_blocks().iter() {}
+        }*/
+        None
+    }
+
     /// Debug function that writes the entire blockchain structure to a .dot
     /// graph file. This graph can then be visualized with graphviz.
     ///
-    pub(crate) fn write_dot(&self, path: &str) {
+    pub fn write_dot(&self, path: &str) {
         let mut dot = format!("digraph Blockchain {{\n");
 
         for (i, node) in self.nodes.iter().enumerate() {
@@ -271,7 +279,6 @@ impl Chain {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_sodium::crypto::sign;
 
     #[test]
     fn test_create() {
@@ -359,5 +366,29 @@ mod tests {
         let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
 
         chain.push(block_0).expect("Chain::push failure");
+    }
+
+    /// Test divering chains
+    ///
+    #[test]
+    fn test_diverging() {
+        let mut chain = Chain::new();
+
+        // Transactions
+        let (t0, t0_s) = Transaction::debug_make_register(format!("SN1337BIKE"));
+        let (t1, _) = Transaction::debug_make_register(format!("MYCOOLBIKE"));
+        let (t2, _) = Transaction::debug_make_transfer(&t0, &t0_s);
+        let (t3, _) = Transaction::debug_make_transfer(&t0, &t0_s);
+
+        // Blocks
+        let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
+        let block_1 = Block::new(block_0.calc_hash(), t1);
+        let block_2 = Block::new(block_0.calc_hash(), t2);
+        let block_3 = Block::new(block_1.calc_hash(), t3);
+
+        chain.push(block_0).expect("Chain::push failure (0)");
+        chain.push(block_1).expect("Chain::push failure (1)");
+        chain.push(block_2).expect("Chain::push failure (2)");
+        chain.push(block_3).expect("Chain::push failure (3)");
     }
 }
