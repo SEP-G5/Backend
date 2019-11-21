@@ -1,4 +1,5 @@
-use crate::blockchain::transaction::{PubKey, Signature, Timestamp, Transaction};
+use crate::blockchain::transaction::{PubKey, Signature, Transaction};
+use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode};
 use rocket::{self, *};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

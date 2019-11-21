@@ -3,9 +3,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::convert::TryInto;
+use std::fmt::{self, Display, Formatter};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-// ========================================================================== //
 
 // ========================================================================== //
 
@@ -53,6 +52,12 @@ impl<T: Hashable> Block<T> {
     pub fn from_parent(parent: &Block<T>, data: T) -> Block<T> {
         let parent_hash = parent.calc_hash();
         Block::new(parent_hash, data)
+    }
+
+    /// Returns the hash of the parent block
+    ///
+    pub fn get_parent_hash(&self) -> &Hash {
+        &self.parent
     }
 
     /// Returns the timestamp when the block was created. In UNIX epoch
@@ -109,6 +114,23 @@ impl<T: Hashable + PartialEq> PartialEq for Block<T> {
             && self.rand_nonce == other.rand_nonce
             && self.nonce == other.nonce
             && self.data == other.data
+    }
+}
+
+// ========================================================================== //
+
+impl<T: Hashable + Display> Display for Block<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Block {{ hash: {}, parent: {}, timestamp: {}, rand_nonce: {}, nonce: {}, data: \'{}\' }}",
+            hash::hash_to_str(&self.calc_hash()),
+            hash::hash_to_str(&self.parent),
+            self.timestamp,
+            self.rand_nonce,
+            self.nonce,
+            self.data
+        )
     }
 }
 

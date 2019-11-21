@@ -1,6 +1,6 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-mod blockchain;
+pub mod blockchain;
 mod rest;
 
 fn main() {

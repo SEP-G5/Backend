@@ -1,12 +1,11 @@
 use crate::blockchain::hash::{self, Hash, Hashable};
+use crate::blockchain::util;
 use rust_sodium::crypto::sign::{
     self, ed25519::sign, ed25519::verify, ed25519::PublicKey, ed25519::SecretKey,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
-use std::time::SystemTime;
 
-pub type Timestamp = u64;
 pub type PubKey = Vec<u8>;
 pub type Signature = Vec<u8>;
 
@@ -16,7 +15,7 @@ pub struct Transaction {
     /// bike SN
     id: String,
     /// seconds since unix epoch (1970)
-    timestamp: Timestamp,
+    timestamp: util::Timestamp,
     pub_key_input: Option<PubKey>,
     pub_key_output: PubKey,
     signature: Signature,
@@ -53,7 +52,7 @@ impl Transaction {
     pub fn new(id: String, pub_key_input: Option<PubKey>, pub_key_output: PubKey) -> Transaction {
         Transaction {
             id: id,
-            timestamp: make_timestamp(),
+            timestamp: util::make_timestamp(),
             pub_key_input: pub_key_input,
             pub_key_output: pub_key_output,
             signature: Vec::new(),
@@ -62,7 +61,7 @@ impl Transaction {
 
     pub fn from_details(
         id: String,
-        timestamp: Timestamp,
+        timestamp: util::Timestamp,
         pub_key_input: Option<PubKey>,
         pub_key_output: PubKey,
         signature: Signature,
@@ -93,7 +92,7 @@ impl Transaction {
         let (pk, sk) = sign::gen_keypair();
         let mut t = Transaction {
             id: t_prev.id.clone(),
-            timestamp: make_timestamp(),
+            timestamp: util::make_timestamp(),
             pub_key_input: Some(t_prev.pub_key_output.clone()),
             pub_key_output: pk.as_ref().to_vec(),
             signature: Vec::new(),
@@ -104,7 +103,7 @@ impl Transaction {
 
     /// Sign a transaction. Make sure all data is filled in, except
     /// signature. Store the signature in itself.
-    fn sign(&mut self, sk: &SecretKey) {
+    pub(crate) fn sign(&mut self, sk: &SecretKey) {
         let buf = self.content_to_u8();
         let sig = sign(buf.as_slice(), &sk);
         self.signature = sig;
@@ -168,19 +167,41 @@ impl Transaction {
         buf.extend(&self.pub_key_output);
         buf
     }
+
+    /// Returns whether or not the transaction
+    pub fn has_input(&self) -> bool {
+        self.pub_key_input.is_some()
+    }
+
+    /// Returns the ID of the transacted object
+    pub fn get_id(&self) -> &String {
+        &self.id
+    }
+
+    /// Function to set the ID of a transaction. This is only available in test
+    /// builds
+    #[cfg(test)]
+    pub fn set_id(&mut self, id: &str) {
+        self.id = String::from(id)
+    }
+
+    /// Returns the input public key
+    ///
+    pub fn get_public_key_input(&self) -> &Option<PubKey> {
+        &self.pub_key_input
+    }
+
+    /// Returns the output public key
+    ///
+    pub fn get_public_key_output(&self) -> &PubKey {
+        &self.pub_key_output
+    }
 }
 
 impl Hashable for Transaction {
     fn calc_hash(&self) -> Hash {
         hash::obj_hash(&self.signature)
     }
-}
-
-fn make_timestamp() -> Timestamp {
-    let ts = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .expect("failed to make timestamp");
-    return ts.as_secs() as Timestamp;
 }
 
 // Tests
@@ -212,7 +233,7 @@ mod tests {
         assert_eq!(t1.verify_is_next(&t0), true);
 
         // T2 - make the third "transfer" transaction
-        let (t2, sk2) = Transaction::debug_make_transfer(&t1, &sk1);
+        let (t2, _) = Transaction::debug_make_transfer(&t1, &sk1);
         assert_eq!(t2.verify(), Ok(()));
         assert_eq!(t2.verify_is_next(&t1), true);
     }
