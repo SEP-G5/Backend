@@ -18,6 +18,13 @@ On Ubuntu you need:
 apt install openssl libssl-dev pkg-config
 ```
 
+Note; due to a package, rust nightly is required. Enable it with:
+``` shell
+rustup default nightly
+rustup update && cargo update
+```
+For more information, [see here](https://rocket.rs/v0.4/guide/getting-started/).
+
 ## Building
 To run the program.
 ``` shell
