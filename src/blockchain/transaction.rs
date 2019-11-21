@@ -6,9 +6,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{self, Display, Formatter};
 use std::time::SystemTime;
 
-type Timestamp = u64;
-type PubKey = Vec<u8>;
-type Signature = Vec<u8>;
+pub type Timestamp = u64;
+pub type PubKey = Vec<u8>;
+pub type Signature = Vec<u8>;
 
 /// Future work: PubKey and Signature should be fixed size arrays.
 #[derive(Serialize, Deserialize, Clone)]
@@ -60,6 +60,22 @@ impl Transaction {
         }
     }
 
+    pub fn from_details(
+        id: String,
+        timestamp: Timestamp,
+        pub_key_input: Option<PubKey>,
+        pub_key_output: PubKey,
+        signature: Signature,
+    ) -> Transaction {
+        Transaction {
+            id,
+            timestamp,
+            pub_key_input,
+            pub_key_output,
+            signature,
+        }
+    }
+
     /// @param id The id of the item, such as serial number of a bike.
     pub fn debug_make_register(id: String) -> (Transaction, SecretKey) {
         let (pk, sk) = sign::gen_keypair();
@@ -70,8 +86,10 @@ impl Transaction {
 
     /// @param t_prev The previous transaction
     /// @param t_sk The previous secret key
-    pub fn debug_make_transfer(t_prev: &Transaction, sk_prev: &SecretKey)
-                               -> (Transaction, SecretKey) {
+    pub fn debug_make_transfer(
+        t_prev: &Transaction,
+        sk_prev: &SecretKey,
+    ) -> (Transaction, SecretKey) {
         let (pk, sk) = sign::gen_keypair();
         let mut t = Transaction {
             id: t_prev.id.clone(),
@@ -111,10 +129,11 @@ impl Transaction {
     ///   "Transfer": There is a input, use the public key of the input.
     pub fn verify(&self) -> Result<(), String> {
         let do_verify = |pk: &[u8], sig: &[u8]| -> Result<(), String> {
+            println!("pk len: {}, sig len: {}", pk.len(), sig.len());
             let pk = PublicKey::from_slice(pk);
             let pk = match pk {
                 Some(p) => p,
-                None => return Err(format!("could not parse public key")),
+                None => return Err(format!("could not create public key from input")),
             };
             match verify(sig, &pk) {
                 Ok(m) => {
