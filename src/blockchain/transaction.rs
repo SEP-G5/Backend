@@ -177,6 +177,16 @@ impl Transaction {
         &self.id
     }
 
+    pub(crate) fn set_id(&mut self, id: &str) {
+        self.id = String::from(id)
+    }
+
+    /// Returns the input public key
+    ///
+    pub fn get_public_key_input(&self) -> &Option<PubKey> {
+        &self.pub_key_input
+    }
+
     /// Returns the output public key
     ///
     pub fn get_public_key_output(&self) -> &PubKey {

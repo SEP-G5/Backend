@@ -14,6 +14,9 @@ use transaction::Transaction;
 
 // ========================================================================== //
 
+/// Enumeration of possible errors that can occur when working with the
+/// blockchain.
+///
 #[derive(Debug)]
 pub enum ChainErr {
     BadParent,
@@ -74,13 +77,14 @@ pub struct Chain {
 // ========================================================================== //
 
 impl Chain {
-    /// Construct a new empty blockchain.
+    /// Construct a new blockchain containing only the "genesis" block.
+    ///
     pub fn new() -> Chain {
         let mut chain = Chain { nodes: vec![] };
 
         // Add the "genesis" block
         chain.nodes.push(Node::new());
-        let (t, t_s) = Transaction::debug_make_register(format!("GENESIS_BIKE"));
+        let (t, _) = Transaction::debug_make_register(format!("GENESIS_BIKE"));
         let b = Block::new(hash::EMPTY_HASH, t);
         chain.nodes[0].add_block(b);
 
@@ -111,6 +115,18 @@ impl Chain {
     ///
     ///
     pub fn push(&mut self, block: BlockType) -> Result<(), ChainErr> {
+        // 1. Check valid signature (register and transfer)
+        if let Err(e) = block.get_data().verify() {
+            return Err(ChainErr::BadTransaction(e));
+        }
+
+        // 2. Check for unique id (register)
+        if !block.get_data().has_input() {
+            if !self.is_unique_id(&block) {
+                return Err(ChainErr::NonUniqueTransactionID);
+            }
+        }
+
         // Find parent index
         let mut parent_index: usize = usize::MAX;
         for (i, node) in self.nodes.iter().enumerate() {
@@ -123,12 +139,15 @@ impl Chain {
         if parent_index == usize::MAX {
             return Err(ChainErr::BadParent);
         }
-        println!("Parent index: {}", parent_index);
+
+        // Check that the input to the transaction is valid
+        if block.get_data().has_input() && !self.has_parent_block(&block) {
+            return Err(ChainErr::BadTransaction(format!("Transaction input referes to a transaction that does not exist in any previous block")));
+        }
 
         // Extend node list if necessary
         if parent_index >= self.nodes.len() - 1 {
             self.nodes.push(Node::new());
-            println!("Added node to extend to length: {}", self.nodes.len());
         }
 
         // Add block
@@ -137,45 +156,111 @@ impl Chain {
         Ok(())
     }
 
+    /// Function to determine if the ID of the transactions in a block are
+    /// currently unique for the blockchain. If any existing blocks in the chain
+    /// has the ID then this function returns false.
+    fn is_unique_id(&self, block: &BlockType) -> bool {
+        for n in self.nodes.iter() {
+            for b in n.get_blocks().iter() {
+                if b.get_data().get_id() == block.get_data().get_id() {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Returns whether or not there exists a block in the chain with the
+    /// transction that the input of the transaction in the specified block
+    /// refers to.
+    ///
+    fn has_parent_block(&self, block: &BlockType) -> bool {
+        self.get_transaction_parent_block(block).is_some()
+    }
+
+    /// Returns the total number of blocks in the chain. This is not the longest
+    /// part of the chain but rather the total number including any diverging
+    /// blocks.
+    ///
     pub fn block_count(&self) -> usize {
         self.nodes.iter().map(|n| n.get_blocks().len()).sum()
     }
 
+    /// Returns the first (genesis) block in the blockchain.
+    ///
     pub fn get_genesis_block(&self) -> &BlockType {
         &self.nodes[0].get_blocks()[0]
     }
 
+    /// Debug function that writes the entire blockchain structure to a .dot
+    /// graph file. This graph can then be visualized with graphviz.
+    ///
     pub(crate) fn write_dot(&self, path: &str) {
         let mut dot = format!("digraph Blockchain {{\n");
 
-        // Build graph
-        let mut idx = 0;
         for (i, node) in self.nodes.iter().enumerate() {
-            let idx_next = idx + node.get_blocks().len();
-            for (j, b) in node.get_blocks().iter().enumerate() {
-                let h = &hash::hash_to_str(&b.calc_hash())[0..6];
-                let tid = b.get_data().get_id();
+            for blk in node.get_blocks().iter() {
+                let hash = blk.calc_hash();
+                let hash_str = hash::hash_to_str(&hash);
+
+                // Block itself
                 dot.push_str(&format!(
-                    "\t{}[label=\"{}...\\nID: {}\", shape=box];\n",
-                    idx + j,
-                    h,
-                    tid
+                    "\t\"{}\"[label=\"{}...\\nID: {}\", shape=box];\n",
+                    hash_str,
+                    &hash_str[0..6],
+                    blk.get_data().get_id()
                 ));
-                // Handle children if available
+
+                // Direct block chaining
                 if i != self.nodes.len() - 1 {
-                    for (k, b1) in self.nodes[i + 1].get_blocks().iter().enumerate() {
-                        if *b1.get_parent_hash() == b.calc_hash() {
-                            dot.push_str(&format!("\t{} -> {};\n", idx + j, idx_next + k));
+                    for blk_c in self.nodes[i + 1].get_blocks().iter() {
+                        let hash_str_c = hash::hash_to_str(&blk_c.calc_hash());
+                        if *blk_c.get_parent_hash() == hash {
+                            dot.push_str(&format!("\t\"{}\" -> \"{}\";\n", hash_str, hash_str_c));
                         }
                     }
                 }
+
+                // Transaction relations
+                if let Some(blk_p) = self.get_transaction_parent_block(blk) {
+                    let hash_str_p = hash::hash_to_str(&blk_p.calc_hash());
+                    dot.push_str(&format!(
+                        "\t\"{}\" -> \"{}\" [color=red, style=dotted];\n",
+                        hash_str_p, hash_str
+                    ));
+                }
             }
-            idx = idx_next;
         }
 
         // Write to file
         dot.push_str("}");
         fs::write(path, &dot).expect("Failed to write dot file");
+    }
+
+    /// Returns a reference to the block that the input of the transaction in
+    /// the specified block refers to. If not block is found then None is
+    /// returned instead.
+    ///
+    fn get_transaction_parent_block(&self, block: &BlockType) -> Option<&BlockType> {
+        // Register blocks don't have any blocks they refer to
+        if !block.get_data().has_input() {
+            return None;
+        }
+
+        // Find the block that the transaction of this block refers to
+        for n in self.nodes.iter().rev() {
+            for b in n.get_blocks().iter() {
+                let p_in = block
+                    .get_data()
+                    .get_public_key_input()
+                    .as_ref()
+                    .expect("Transaction representing transfer is expected to have an input");
+                if b.get_data().get_public_key_output() == p_in {
+                    return Some(&b);
+                }
+            }
+        }
+        None
     }
 }
 
@@ -191,7 +276,11 @@ mod tests {
     #[test]
     fn test_create() {
         let chain = Chain::new();
-        //assert_eq!(chain.len(), 0, "Newly created blockchains must be empty");
+        assert_eq!(
+            chain.block_count(),
+            1,
+            "Newly created blockchains should only contain the genesis block"
+        );
     }
 
     #[test]
@@ -200,75 +289,75 @@ mod tests {
 
         // Transactions
         let (t0, t0_s) = Transaction::debug_make_register(format!("SN1337BIKE"));
-        let (t1, t1_s) = Transaction::debug_make_transfer(&t0, &t0_s);
+        let (t1, _) = Transaction::debug_make_transfer(&t0, &t0_s);
+        let (t2, _) = Transaction::debug_make_register(format!("MYCOOLBIKE"));
+
+        // Blocks
+        let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
+        let block_1 = Block::new(block_0.calc_hash(), t2);
+        let block_2 = Block::new(block_1.calc_hash(), t1);
+
+        chain.push(block_0).expect("Chain::push failure (0)");
+        chain.push(block_1).expect("Chain::push failure (1)");
+        chain.push(block_2).expect("Chain::push failure (2)");
+
+        assert_eq!(
+            chain.block_count(),
+            4,
+            "Blockchain should contain 4 blocks (+1 for genesis)"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Chain::push failure (1): BadParent")]
+    fn test_invalid_parent() {
+        let mut chain = Chain::new();
+
+        // Transactions
+        let (t0, _) = Transaction::debug_make_register(format!("SN1337BIKE"));
+        let (t1, _) = Transaction::debug_make_register(format!("MYCOOLBIKE"));
+
+        // Blocks
+        let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
+        let block_1 = Block::new(hash::EMPTY_HASH, t1);
+
+        chain.push(block_0).expect("Chain::push failure (0)");
+        chain.push(block_1).expect("Chain::push failure (1)");
+    }
+
+    /// Test to see that duplicate IDs of transactions are not allowed.
+    #[test]
+    #[should_panic(expected = "Chain::push failure (1): NonUniqueTransactionID")]
+    fn test_append_dup_id() {
+        let mut chain = Chain::new();
+
+        // Transactions
+        let (t0, _) = Transaction::debug_make_register(format!("SN1337BIKE"));
+        let (t1, _) = Transaction::debug_make_register(format!("SN1337BIKE"));
 
         // Blocks
         let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
         let block_1 = Block::new(block_0.calc_hash(), t1);
 
-        chain.push(block_0).expect("Failed to add block 0:");
-        chain.push(block_1).expect("Failed to add block 1:");
-
-        assert_eq!(
-            chain.block_count(),
-            3,
-            "Blockchain should contain 3 blocks (+1 for genesis)"
-        );
-
-        chain.write_dot("chain.dot");
+        chain.push(block_0).expect("Chain::push failure (0)");
+        chain.push(block_1).expect("Chain::push failure (1)");
     }
 
-    /*
+    /// Test to see that a tampered transaction produces a verification error.
     #[test]
-    #[should_panic]
-    fn test_append_invalid_id() {
+    #[should_panic(
+        expected = "Chain::push failure: BadTransaction(\"content does not match the signature\")"
+    )]
+    fn test_invalid_transaction() {
         let mut chain = Chain::new();
 
-        // First transaction
-        let (t0_p, t0_s) = sign::gen_keypair();
-        let mut t0 = Transaction::new(format!("SN1337BIKE"), None, t0_p.as_ref().to_vec());
-        t0.sign(&t0_s);
-
-        // Second transaction
-        let (t1_p, _) = sign::gen_keypair();
-        let mut t1 = Transaction::new_debug(
-            format!("MYCOOLBIKE"),
-            util::make_timestamp(),
-            Some(t0.get_public_key_output().clone()),
-            t1_p.as_ref().to_vec(),
-            Vec::new(),
-        );
-        t1.sign(&t0_s);
+        // Transactions
+        let (mut t0, _) = Transaction::debug_make_register(format!("SN1337BIKE"));
+        t0.set_id("MYCOOLBIKE");
 
         // Blocks
-        let block_0 = Block::new(hash::EMPTY_HASH, t0);
-        let block_1 = Block::new(block_0.calc_hash(), t1);
+        let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
 
-        chain.push(block_0).expect("Failed to add block 0:");
-        chain.push(block_1).expect("Failed to add block 1:");
+        chain.push(block_0).expect("Chain::push failure");
     }
-
-    #[test]
-    #[should_panic]
-    fn test_append_dup_id() {
-        let mut chain = Blockchain::new();
-
-        // First transaction
-        let (t0_p, t0_s) = sign::gen_keypair();
-        let mut t0 = Transaction::new(format!("SN1337BIKE"), None, t0_p.as_ref().to_vec());
-        t0.sign(&t0_s);
-
-        // Second transaction
-        let (t1_p, t1_s) = sign::gen_keypair();
-        let mut t1 = Transaction::new(format!("SN1337BIKE"), None, t1_p.as_ref().to_vec());
-        t1.sign(&t1_s);
-
-        // Blocks
-        let block_0 = Block::new(hash::EMPTY_HASH, t0);
-        let block_1 = Block::new(block_0.calc_hash(), t1);
-
-        chain.push(block_0).expect("Failed to add block 0:");
-        chain.push(block_1).expect("Failed to add block 1:");
-    }
-    */
 }
