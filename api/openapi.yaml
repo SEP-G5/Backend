@@ -11,7 +11,7 @@ externalDocs:
   description: Github of the project
   url: 'https://github.com/SEP-G5/Backend'
 paths:
-  /transaction:
+  /new:
     post:
       summary: Create a new transaction
       operationId: createTransaction
@@ -26,25 +26,27 @@ paths:
               $ref: '#/components/schemas/Transaction'
       responses:
         '200':
-          description: return the transaction
+          description: A response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Transaction'
-        '400':
-          description: Bad Request, missing attributes in the request, transaction not valid (not signed...)
-        '401':
-          description: |
-            In a Registration, the bike has already an owner
-            In a Transfer, the public key is not the owner of the bike
-    get:
-      summary: Get transactions
+  /info:
+    post:
+      summary: Get info about transactions
       description: Get transactions
       operationId: getTransactions
+      requestBody:
+        description: What to lookup information about
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Transaction'
       parameters:
         - name: limit
           in: query
-          description: limits the number of records returned 
+          description: limits the number of records returned
           required: false
           explode: true
           schema:
@@ -132,7 +134,7 @@ components:
         signature:
           type: string
           description: 'signature of the transaction'
-          example: 'da8833f4b107173987e665f6e2daef36e66f2c4f36facc79e738be6c5adcaeebe13ead8345c2c040de0713b52bdbcce2931914f15cf39de01152bc798564500d534e3133333742494b454329d55d000000005881b25d947ca4842c2cbec1697bbc9ce3da7d3fa9f688f2f5914b1ac2bf17c6'   
+          example: 'da8833f4b107173987e665f6e2daef36e66f2c4f36facc79e738be6c5adcaeebe13ead8345c2c040de0713b52bdbcce2931914f15cf39de01152bc798564500d534e3133333742494b454329d55d000000005881b25d947ca4842c2cbec1697bbc9ce3da7d3fa9f688f2f5914b1ac2bf17c6'
     Peer:
       type: object
       required:
@@ -142,3 +144,17 @@ components:
           type: string
           description: 'IP of the peer'
           example: '95.15.156.35'
+    Response:
+      type: object
+      required:
+        - ok
+        - msg
+      properties:
+        ok:
+          type: bool
+          description: 'success or failure'
+          example: true
+        msg:
+          type: string
+          description: 'Response message'
+          example: 'Could not parse id as String'
