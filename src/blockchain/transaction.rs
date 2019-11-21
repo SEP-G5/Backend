@@ -6,8 +6,8 @@ use rust_sodium::crypto::sign::{
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
 
-type PubKey = Vec<u8>;
-type Signature = Vec<u8>;
+pub type PubKey = Vec<u8>;
+pub type Signature = Vec<u8>;
 
 /// Future work: PubKey and Signature should be fixed size arrays.
 #[derive(Serialize, Deserialize, Clone)]
@@ -59,8 +59,7 @@ impl Transaction {
         }
     }
 
-    /// Make debug transaction
-    /*pub fn new_debug(
+    pub fn from_details(
         id: String,
         timestamp: util::Timestamp,
         pub_key_input: Option<PubKey>,
@@ -73,7 +72,8 @@ impl Transaction {
             pub_key_input,
             pub_key_output,
             signature,
-        }*/
+        }
+    }
 
     /// @param id The id of the item, such as serial number of a bike.
     pub fn debug_make_register(id: String) -> (Transaction, SecretKey) {
@@ -128,10 +128,11 @@ impl Transaction {
     ///   "Transfer": There is a input, use the public key of the input.
     pub fn verify(&self) -> Result<(), String> {
         let do_verify = |pk: &[u8], sig: &[u8]| -> Result<(), String> {
+            println!("pk len: {}, sig len: {}", pk.len(), sig.len());
             let pk = PublicKey::from_slice(pk);
             let pk = match pk {
                 Some(p) => p,
-                None => return Err(format!("could not parse public key")),
+                None => return Err(format!("could not create public key from input")),
             };
             match verify(sig, &pk) {
                 Ok(m) => {
