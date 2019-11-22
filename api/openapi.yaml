@@ -11,7 +11,7 @@ externalDocs:
   description: Github of the project
   url: 'https://github.com/SEP-G5/Backend'
 paths:
-  /new:
+  /transaction:
     post:
       summary: Create a new transaction
       operationId: createTransaction
@@ -37,9 +37,8 @@ paths:
           description: |
             In a Registration, the bike has already an owner
             In a Transfer, the public key is not the owner of the bike
-  /info:
-    post:
-      summary: Get info about transactions
+    get:
+      summary: Get transactions related to the given information
       description: Get transactions
       operationId: getTransactions
       requestBody:
@@ -75,6 +74,7 @@ paths:
           explode: true
           schema:
             type: string
+            format: byte
             description: 'public key'
             example: '5881b25d947ca4842c2cbec1697bbc9ce3da7d3fa9f688f2f5914b1ac2bf17c6'
         - name: id
@@ -116,7 +116,6 @@ components:
       required:
         - id
         - timestamp
-        - publicKeyInput
         - publicKeyOutput
         - signature
       properties:
@@ -131,14 +130,17 @@ components:
           example: 1574250819
         publicKeyInput:
           type: string
+          format: byte
           description: 'public key input'
           example: '85d23c7ff49ff8f64115cbe76075b9f225d1c028449a8b426591ffb3cbd7741b'
         publicKeyOutput:
           type: string
+          format: byte
           description: 'public key output'
           example: '5881b25d947ca4842c2cbec1697bbc9ce3da7d3fa9f688f2f5914b1ac2bf17c6'
         signature:
           type: string
+          format: byte
           description: 'signature of the transaction'
           example: 'da8833f4b107173987e665f6e2daef36e66f2c4f36facc79e738be6c5adcaeebe13ead8345c2c040de0713b52bdbcce2931914f15cf39de01152bc798564500d534e3133333742494b454329d55d000000005881b25d947ca4842c2cbec1697bbc9ce3da7d3fa9f688f2f5914b1ac2bf17c6'
     Peer:
