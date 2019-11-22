@@ -10,7 +10,7 @@ pub type PubKey = Vec<u8>;
 pub type Signature = Vec<u8>;
 
 /// Future work: PubKey and Signature should be fixed size arrays.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Transaction {
     /// bike SN
     id: String,

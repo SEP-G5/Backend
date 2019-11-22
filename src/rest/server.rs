@@ -1,16 +1,21 @@
+use crate::backend::operation::Operation;
+use crate::blockchain::block;
 use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode};
 use rocket::{self, *};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{self, Value};
+use std::sync::mpsc;
+use std::sync::Mutex;
 
 // ============================================================ //
 
 /// main entry point for the REST server program
-pub fn run_server() {
+pub fn run_server(sender: mpsc::Sender<Operation>) {
     rocket::ignite()
         .mount("/", routes![index, new, info, peer])
+        .manage(Mutex::new(sender))
         .launch();
 }
 
@@ -22,14 +27,19 @@ struct Response {
     msg: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Peer {
-    ip: String,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Peer {
+    pub ip: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Peers {
+    pub peers: Vec<Peer>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct Peers {
-    peers: Vec<Peer>,
+struct Transactions {
+    handle: Vec<Transaction>,
 }
 
 // ============================================================ //
@@ -124,7 +134,7 @@ fn index() -> &'static str {
 /// The client wants to create a new transaction.
 /// @param data Contains the transaction that was created by the client
 #[post("/new", format = "json", data = "<data>")]
-fn new(data: String) -> String {
+fn new(data: String, sender: State<Mutex<mpsc::Sender<Operation>>>) -> String {
     let v: Value = match serde_json::from_str(data.as_str()) {
         Ok(v) => v,
         Err(e) => return make_response(false, &format!("{}", e)),
@@ -137,6 +147,18 @@ fn new(data: String) -> String {
 
     // TODO ask blockchain to accept the trasaction
     // ...
+    /*
+    let tmp_op = Operation::QueryID {
+        id: String::from("baha"),
+        limit: 1337,
+        skip: 32,
+    };
+    sender
+        .lock()
+        .expect("Failed to lock state mutex")
+        .send(tmp_op)
+        .expect("Failed to send op");
+    */
 
     // TEMP CODE verify the transaction, will be done by blockchain later
     match t.verify() {
