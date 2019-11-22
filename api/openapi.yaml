@@ -41,13 +41,6 @@ paths:
       summary: Get transactions related to the given information
       description: Get transactions
       operationId: getTransactions
-      requestBody:
-        description: What to lookup information about
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Transaction'
       parameters:
         - name: limit
           in: query
