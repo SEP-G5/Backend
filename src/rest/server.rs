@@ -32,6 +32,11 @@ struct Peers {
     peers: Vec<Peer>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct Transactions {
+    handle: Vec<Transaction>,
+}
+
 // ============================================================ //
 
 fn make_response(ok: bool, msg: &str) -> String {
@@ -145,7 +150,7 @@ fn new(data: String) -> String {
     }
 
     make_response(
-        false,
+        true,
         "The transaction was accepted! (maybe, not implemented yet ;)",
     )
 }
@@ -160,15 +165,30 @@ fn info(data: String) -> String {
     };
 
     // cannot be both and cannot be none
-    let pk: bool = v["publicKey"] != Value::Null;
-    let id: bool = v["id"] != Value::Null;
+    let pk: bool = v["publicKey"].is_string();
+    let id: bool = v["id"].is_string();
+
+    let dummy_response = || -> String {
+        let (t0, sk0) = Transaction::debug_make_register(v["id"].as_str().unwrap().to_string());
+        let (t1, sk1) = Transaction::debug_make_transfer(&t0, &sk0);
+        let (t2, sk2) = Transaction::debug_make_transfer(&t1, &sk1);
+
+        let mut ts = Transactions{handle: Vec::new()};
+        ts.handle.push(t0);
+        ts.handle.push(t1);
+        ts.handle.push(t2);
+        serde_json::to_string(&ts).expect("failed to convert to json")
+    };
+
 
     if pk && !id {
         // TODO ask the blockchain for all transactions with a given pk
         // ...
+        return dummy_response();
     } else if id && !pk {
         // TODO ask the blockchain for all transactions with a given id
         // ...
+        return dummy_response();
     } else if pk && id {
         return make_response(
             false,
