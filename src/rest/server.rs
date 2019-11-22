@@ -2,18 +2,20 @@ use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode};
 use rocket::{self, *};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{self, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::{self, Value, json};
 
 // ============================================================ //
 
 /// main entry point for the REST server program
 pub fn run_server() {
     rocket::ignite()
-        .mount("/", routes![index, new, info, peer])
+        .mount("/", routes![index, tx_post, tx_get, peer])
         .launch();
 }
 
+// ============================================================ //
+// structs
 // ============================================================ //
 
 #[derive(Serialize, Deserialize)]
@@ -37,6 +39,40 @@ struct Transactions {
     handle: Vec<Transaction>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct JsonTransactions {
+    handle: Vec<Value>,
+}
+
+// ============================================================ //
+// impls
+// ============================================================ //
+
+impl Transactions {
+    pub fn iter(&self) -> std::slice::Iter<Transaction> {
+        self.handle.iter()
+    }
+}
+
+impl JsonTransactions {
+
+    #[allow(dead_code)]
+    fn new() -> JsonTransactions {
+        JsonTransactions{handle: Vec::new()}
+    }
+
+    fn from(t: Transactions) -> JsonTransactions {
+        let vv: Vec<Value> = t.iter().map(|tx| transaction_to_json_transaction(tx) ).collect();
+        JsonTransactions{handle: vv}
+    }
+
+    fn to_string(&self) -> String {
+        serde_json::to_string(&self.handle).expect("failed to convert to json")
+    }
+}
+
+// ============================================================ //
+// hepler functions
 // ============================================================ //
 
 fn make_response(ok: bool, msg: &str) -> String {
@@ -47,7 +83,22 @@ fn make_response(ok: bool, msg: &str) -> String {
     serde_json::to_string(&r).expect("failed to convert to json")
 }
 
-fn json_transaction_to_transaction(v: Value) -> Result<Transaction, String> {
+/// @pre t Must be a valid transaction
+fn transaction_to_json_transaction(t: &Transaction) -> Value {
+    let mut v: Value = json!({
+        "id": t.get_id(),
+        "timestamp": t.get_timestamp(),
+        "publicKeyInput": Value::Null,
+        "publicKeyOutput": encode(t.get_public_key_output()),
+        "signature": encode(t.get_signature()),
+    });
+    if let Some(pk) = t.get_public_key_input() {
+        *v.get_mut("publicKeyInput").unwrap() = json!(encode(pk));
+    }
+    v
+}
+
+fn json_transaction_to_transaction(v: &Value) -> Result<Transaction, String> {
     let id: String = match v["id"].as_str() {
         Some(s) => s.to_string(),
         None => return Err(make_response(false, "Could not parse id as String")),
@@ -128,20 +179,21 @@ fn index() -> &'static str {
 
 /// The client wants to create a new transaction.
 /// @param data Contains the transaction that was created by the client
-#[post("/new", format = "json", data = "<data>")]
-fn new(data: String) -> String {
+#[post("/transaction", format = "json", data = "<data>")]
+fn tx_post(data: String) -> String {
     let v: Value = match serde_json::from_str(data.as_str()) {
         Ok(v) => v,
         Err(e) => return make_response(false, &format!("{}", e)),
     };
 
-    let t: Transaction = match json_transaction_to_transaction(v) {
+    let t: Transaction = match json_transaction_to_transaction(&v) {
         Ok(t) => t,
         Err(s) => return s,
     };
 
     // TODO ask blockchain to accept the trasaction
     // ...
+
 
     // TEMP CODE verify the transaction, will be done by blockchain later
     match t.verify() {
@@ -157,52 +209,44 @@ fn new(data: String) -> String {
 
 /// The client wants information about the given data. Such as information
 /// about an id, or public key.
-#[post("/info", format = "json", data = "<data>")]
-fn info(data: String) -> String {
-    let v: Value = match serde_json::from_str(data.as_str()) {
-        Ok(j) => j,
-        Err(e) => return make_response(false, &format!("{}", e)),
-    };
+#[get("/transaction?<id>&<publicKey>&<limit>&<skip>", format = "json")]
+#[allow(non_snake_case)]
+fn tx_get(id: Option<String>, publicKey: Option<String>,
+          limit: Option<u64>, skip: Option<u64>) -> String {
+    let pk = publicKey;
 
-    // cannot be both and cannot be none
-    let pk: bool = v["publicKey"].is_string();
-    let id: bool = v["id"].is_string();
-
-    let dummy_response = || -> String {
-        let (t0, sk0) = Transaction::debug_make_register(v["id"].as_str().unwrap().to_string());
+    let dummy_response = |id: &String| -> String {
+        let (t0, sk0) = Transaction::debug_make_register(id.clone());
         let (t1, sk1) = Transaction::debug_make_transfer(&t0, &sk0);
-        let (t2, sk2) = Transaction::debug_make_transfer(&t1, &sk1);
+        let (t2, _) = Transaction::debug_make_transfer(&t1, &sk1);
 
         let mut ts = Transactions{handle: Vec::new()};
         ts.handle.push(t0);
         ts.handle.push(t1);
         ts.handle.push(t2);
-        serde_json::to_string(&ts).expect("failed to convert to json")
+
+        let jt = JsonTransactions::from(ts);
+        jt.to_string()
     };
 
+    // TODO limit & skip should not be noop's
 
-    if pk && !id {
+    if id.is_none() && pk.is_some() {
         // TODO ask the blockchain for all transactions with a given pk
         // ...
-        return dummy_response();
-    } else if id && !pk {
+        return dummy_response(&pk.unwrap());
+    } else if id.is_some() && pk.is_none() {
         // TODO ask the blockchain for all transactions with a given id
         // ...
-        return dummy_response();
-    } else if pk && id {
+        return dummy_response(&id.unwrap());
+    } else if pk.is_some() && id.is_some() {
         return make_response(
             false,
             "info request has both public key and id, can only have one.",
         );
-    } else if !pk && !id {
+    } else /*if pk.is_none() && id.is_none() */ {
         return make_response(false, "info request has no public key or id, must have one");
     }
-
-    // TODO not have this default fail msg
-    return make_response(
-        false,
-        "no transaction with that public key was found in the blockchain",
-    );
 }
 
 #[get("/peer")]

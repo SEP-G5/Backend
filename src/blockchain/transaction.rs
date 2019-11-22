@@ -185,6 +185,10 @@ impl Transaction {
         self.id = String::from(id)
     }
 
+    pub fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
     /// Returns the input public key
     ///
     pub fn get_public_key_input(&self) -> &Option<PubKey> {
@@ -195,6 +199,10 @@ impl Transaction {
     ///
     pub fn get_public_key_output(&self) -> &PubKey {
         &self.pub_key_output
+    }
+
+    pub fn get_signature(&self) -> &Signature {
+        &self.signature
     }
 }
 
