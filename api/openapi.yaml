@@ -31,6 +31,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Bad Request, missing attributes in the request, transaction not valid (not signed...)
+        '401':
+          description: |
+            In a Registration, the bike has already an owner
+            In a Transfer, the public key is not the owner of the bike
   /info:
     post:
       summary: Get info about transactions
