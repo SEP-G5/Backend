@@ -7,9 +7,8 @@ pub mod util;
 
 use block::Block;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::usize;
-use transaction::Transaction;
+use std::{fs, io, usize};
+use transaction::{PubKey, Transaction};
 
 // ========================================================================== //
 
@@ -193,17 +192,80 @@ impl Chain {
 
     /// Returns the last block that is associated with a transaction that has
     /// the specified ID
-    pub fn get_block_for_id(&self, id: &str) -> Option<&BlockType> {
-        /*for node in self.nodes.iter().rev() {
-            for block in node.get_blocks().iter() {}
-        }*/
-        None
+    ///
+    pub fn get_blocks_for_id(&self, id: &str) -> Vec<&BlockType> {
+        let mut output = vec![];
+        let mut hash_paren = hash::EMPTY_HASH;
+        for node in self.nodes.iter().rev() {
+            for block in node.get_blocks().iter() {
+                let hash = block.calc_hash();
+                if hash_paren == hash || hash_paren == hash::EMPTY_HASH {
+                    hash_paren = block.get_parent_hash().clone();
+                    if block.get_data().get_id() == id {
+                        output.push(block);
+                    }
+                    break;
+                }
+            }
+        }
+
+        output.reverse();
+        output
+    }
+
+    /// Returns a list of blocks that have transactions where either the input
+    /// or output matches the specified public key.
+    ///
+    pub fn get_blocks_for_pub_key(&self, key: &PubKey) -> Vec<&BlockType> {
+        let mut output = vec![];
+        let mut hash_paren = hash::EMPTY_HASH;
+        for node in self.nodes.iter().rev() {
+            for block in node.get_blocks().iter() {
+                let hash = block.calc_hash();
+                if hash_paren == hash || hash_paren == hash::EMPTY_HASH {
+                    hash_paren = block.get_parent_hash().clone();
+
+                    // Match input?
+                    let mut is_match = false;
+                    if let Some(i) = block.get_data().get_public_key_input() {
+                        if i == key {
+                            is_match = true;
+                        }
+                    }
+                    // Match output?
+                    if block.get_data().get_public_key_output() == key {
+                        is_match = true;
+                    }
+
+                    // Add block if matching either
+                    if is_match {
+                        output.push(block);
+                    }
+                    break;
+                }
+            }
+        }
+
+        output.reverse();
+        output
     }
 
     /// Debug function that writes the entire blockchain structure to a .dot
-    /// graph file. This graph can then be visualized with graphviz.
+    /// graph file.
     ///
-    pub fn write_dot(&self, path: &str) {
+    /// This graph can then be visualized with graphviz.
+    ///
+    pub fn write_dot(&self, path: &str) -> io::Result<()> {
+        self.write_dot_id(path, "")
+    }
+
+    /// Debug function that writes the entire blockchain structure to a .dot
+    /// graph file. Each node that has a transaction matching the specified ID
+    /// will also be colored red.
+    ///
+    /// This graph can then be visualized with graphviz.
+    ///
+    pub fn write_dot_id(&self, path: &str, id: &str) -> io::Result<()> {
         let mut dot = format!("digraph Blockchain {{\n");
 
         for (i, node) in self.nodes.iter().enumerate() {
@@ -212,11 +274,18 @@ impl Chain {
                 let hash_str = hash::hash_to_str(&hash);
 
                 // Block itself
+                let color = if !id.is_empty() && blk.get_data().get_id() == id {
+                    "red"
+                } else {
+                    "black"
+                };
+
                 dot.push_str(&format!(
-                    "\t\"{}\"[label=\"{}...\\nID: {}\", shape=box];\n",
+                    "\t\"{}\"[label=\"{}...\\nID: {}\", shape=box, color={}];\n",
                     hash_str,
                     &hash_str[0..6],
-                    blk.get_data().get_id()
+                    blk.get_data().get_id(),
+                    color
                 ));
 
                 // Direct block chaining
@@ -242,7 +311,7 @@ impl Chain {
 
         // Write to file
         dot.push_str("}");
-        fs::write(path, &dot).expect("Failed to write dot file");
+        fs::write(path, &dot)
     }
 
     /// Returns a reference to the block that the input of the transaction in
@@ -390,5 +459,58 @@ mod tests {
         chain.push(block_1).expect("Chain::push failure (1)");
         chain.push(block_2).expect("Chain::push failure (2)");
         chain.push(block_3).expect("Chain::push failure (3)");
+    }
+
+    #[test]
+    fn test_query_id() {
+        let mut chain = Chain::new();
+
+        // Transactions
+        let (t0, t0_s) = Transaction::debug_make_register(format!("SN1337BIKE"));
+        let (t1, _) = Transaction::debug_make_register(format!("MYCOOLBIKE"));
+        let (t2, t2_s) = Transaction::debug_make_transfer(&t0, &t0_s);
+        let (t3, _) = Transaction::debug_make_transfer(&t2, &t2_s);
+
+        // Blocks
+        let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
+        let block_1 = Block::new(block_0.calc_hash(), t1);
+        let block_2 = Block::new(block_1.calc_hash(), t2);
+        let block_3 = Block::new(block_2.calc_hash(), t3);
+
+        chain.push(block_0).expect("Chain::push failure (0)");
+        chain.push(block_1).expect("Chain::push failure (1)");
+        chain.push(block_2).expect("Chain::push failure (2)");
+        chain.push(block_3).expect("Chain::push failure (3)");
+
+        let q_id = "SN1337BIKE";
+        let q = chain.get_blocks_for_id(q_id);
+        assert_eq!(q.len(), 3, "Three blocks should match the ID");
+        assert_eq!(q.iter().all(|b| b.get_data().get_id() == q_id), true);
+    }
+
+    #[test]
+    fn test_query_pub_key() {
+        let mut chain = Chain::new();
+
+        // Transactions
+        let (t0, t0_s) = Transaction::debug_make_register(format!("SN1337BIKE"));
+        let pub_key = t0.get_public_key_output().clone();
+        let (t1, _) = Transaction::debug_make_register(format!("MYCOOLBIKE"));
+        let (t2, t2_s) = Transaction::debug_make_transfer(&t0, &t0_s);
+        let (t3, _) = Transaction::debug_make_transfer(&t2, &t2_s);
+
+        // Blocks
+        let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
+        let block_1 = Block::new(block_0.calc_hash(), t1);
+        let block_2 = Block::new(block_1.calc_hash(), t2);
+        let block_3 = Block::new(block_2.calc_hash(), t3);
+
+        chain.push(block_0).expect("Chain::push failure (0)");
+        chain.push(block_1).expect("Chain::push failure (1)");
+        chain.push(block_2).expect("Chain::push failure (2)");
+        chain.push(block_3).expect("Chain::push failure (3)");
+
+        let q = chain.get_blocks_for_pub_key(&pub_key);
+        assert_eq!(q.len(), 2, "The two blocks between which the ownership of the bike is first transferred should be found");
     }
 }
