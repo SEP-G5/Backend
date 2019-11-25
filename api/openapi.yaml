@@ -32,8 +32,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/Transaction'
         '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
           description: Bad Request, missing attributes in the request, transaction not valid (not signed...)
         '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
           description: |
             In a Registration, the bike has already an owner
             In a Transfer, the public key is not the owner of the bike
@@ -148,13 +156,8 @@ components:
     Response:
       type: object
       required:
-        - ok
         - msg
       properties:
-        ok:
-          type: bool
-          description: 'success or failure'
-          example: true
         msg:
           type: string
           description: 'Response message'
