@@ -1,7 +1,7 @@
 use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode};
-use rocket::{self, *};
+use rocket::{self, *, http::Status};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value, json};
 
@@ -212,7 +212,7 @@ fn tx_post(data: String) -> String {
 #[get("/transaction?<id>&<publicKey>&<limit>&<skip>", format = "json")]
 #[allow(non_snake_case)]
 fn tx_get(id: Option<String>, publicKey: Option<String>,
-          limit: Option<u64>, skip: Option<u64>) -> String {
+          limit: Option<u64>, skip: Option<u64>) -> Result<String, Status> {
     let pk = publicKey;
 
     let dummy_response = |id: &String| -> String {
@@ -234,19 +234,20 @@ fn tx_get(id: Option<String>, publicKey: Option<String>,
     if id.is_none() && pk.is_some() {
         // TODO ask the blockchain for all transactions with a given pk
         // ...
-        return dummy_response(&pk.unwrap());
+        return Ok(dummy_response(&pk.unwrap()));
     } else if id.is_some() && pk.is_none() {
         // TODO ask the blockchain for all transactions with a given id
         // ...
-        return dummy_response(&id.unwrap());
+        return Ok(dummy_response(&id.unwrap()));
     } else if pk.is_some() && id.is_some() {
-        return make_response(
-            false,
-            "info request has both public key and id, can only have one.",
-        );
+        return Err(Status{code: 400, reason: "info request has both public key and id, can only have one."});
     } else /*if pk.is_none() && id.is_none() */ {
-        return make_response(false, "info request has no public key or id, must have one");
+        return Err(Status{code: 400, reason: "info request has no public key or id, must have one"});
     }
+
+    // TODO return status code 401 when:
+    //  * In a Registration, the bike has already an owner
+    //  * In a Transfer, the public key is not the owner of the bike
 }
 
 #[get("/peer")]
