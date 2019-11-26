@@ -7,11 +7,12 @@ use crate::blockchain::{
     transaction::{PubKey, Transaction},
     Chain, ChainErr,
 };
+use crate::p2p::network::{self, Network};
 use crate::rest::{
     self,
     server::{Peer, Peers},
 };
-use futures::{channel::oneshot, Future};
+use futures::{sync::oneshot};
 use operation::Operation;
 use std::sync::mpsc;
 use std::thread;
@@ -54,13 +55,15 @@ impl Backend {
         });
 
         // Launch P2P communicator
-        let (p2p_send, p2p_recv) = mpsc::channel::<Operation>();
-        thread::spawn(move || {
-            //p2p::comm::run(p2p_recv);
-        });
+        let (network, network_recv) = Network::new();
 
         // Wait on messages
         loop {
+            let res = network_recv.try_recv();
+            if let Ok(_op) = res {
+                println!("operation on network recv");
+            }
+
             let res = rest_recv.try_recv();
             if let Ok(op) = res {
                 match op {

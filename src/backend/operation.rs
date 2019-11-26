@@ -2,7 +2,7 @@ use crate::backend::BackendErr;
 use crate::blockchain::transaction::{PubKey, Transaction};
 use crate::blockchain::ChainErr;
 use crate::rest::server::Peers;
-use futures::channel::oneshot::Sender;
+use futures::sync::oneshot::Sender;
 
 // ========================================================================== //
 

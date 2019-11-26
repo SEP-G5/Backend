@@ -2,7 +2,7 @@ use crate::backend::{operation::Operation, BackendErr};
 use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode};
-use futures::{channel::oneshot, Future};
+use futures::{sync::oneshot};
 use rocket::{self, http::Status, *};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
