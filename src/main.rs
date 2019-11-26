@@ -11,7 +11,7 @@ use backend::Backend;
 // ========================================================================== //
 
 fn main() {
-    let backend = Backend::new();
+    let mut backend = Backend::new();
     backend.run();
 
     /*

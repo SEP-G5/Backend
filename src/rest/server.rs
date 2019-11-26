@@ -1,8 +1,8 @@
-use crate::backend::operation::Operation;
-use crate::blockchain::block;
+use crate::backend::{operation::Operation, BackendErr};
 use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode};
+use futures::{channel::oneshot, Future};
 use rocket::{self, *};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
@@ -198,31 +198,38 @@ fn tx_post(data: String, sender: State<Mutex<mpsc::Sender<Operation>>>) -> Strin
         Err(s) => return s,
     };
 
-    // TODO ask blockchain to accept the trasaction
-    // ...
-    /*
-    let tmp_op = Operation::QueryID {
-        id: String::from("baha"),
-        limit: 1337,
-        skip: 32,
-    };
-    sender
-        .lock()
-        .expect("Failed to lock state mutex")
-        .send(tmp_op)
-        .expect("Failed to send op");
-    */
-
     // TEMP CODE verify the transaction, will be done by blockchain later
     match t.verify() {
         Ok(_) => {}
         Err(e) => return make_response(false, &format!("{}", e)),
     }
 
-    make_response(
-        true,
-        "The transaction was accepted! (maybe, not implemented yet ;)",
-    )
+    let (res_write, mut res_read) = oneshot::channel();
+    let tmp_op = Operation::CreateTransaction {
+        transaction: t,
+        res: res_write,
+    };
+    sender
+        .lock()
+        .expect("Failed to lock state mutex")
+        .send(tmp_op)
+        .expect("Failed to send op");
+    let result = 'wait_loop: loop {
+        match res_read.try_recv() {
+            Ok(o_ec) => {
+                if let Some(ec) = o_ec {
+                    break 'wait_loop ec;
+                }
+            }
+            Err(_) => break 'wait_loop Err(BackendErr::OpCancelled),
+        };
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+
+    match result {
+        Ok(_) => make_response(true, &format!("The transaction was accepted")),
+        Err(e) => make_response(true, &format!("The transaction was rejected: {:?}", e)),
+    }
 }
 
 /// The client wants information about the given data. Such as information

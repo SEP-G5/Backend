@@ -5,7 +5,7 @@ pub mod operation;
 use crate::blockchain::{
     block::Block,
     transaction::{PubKey, Transaction},
-    Chain,
+    Chain, ChainErr,
 };
 use crate::rest::{
     self,
@@ -15,6 +15,14 @@ use futures::{channel::oneshot, Future};
 use operation::Operation;
 use std::sync::mpsc;
 use std::thread;
+
+// ========================================================================== //
+
+#[derive(Debug)]
+pub enum BackendErr {
+    OpCancelled,
+    ChainErr(ChainErr),
+}
 
 // ========================================================================== //
 
@@ -33,13 +41,12 @@ impl Backend {
         let mut backend = Backend {
             chain: Chain::new(),
         };
-        backend.build_test_chain();
         backend
     }
 
     /// Run the backend.
     ///
-    pub fn run(&self) {
+    pub fn run(&mut self) {
         // Launch REST server
         let (rest_send, rest_recv) = mpsc::channel();
         thread::spawn(move || {
@@ -63,10 +70,6 @@ impl Backend {
                         skip,
                         res,
                     } => {
-                        /*println!(
-                            "Got: \"QueryID {{ id: {}, limit: {}, skip: {} }}\"",
-                            id, limit, skip
-                        );*/
                         let blocks = self.chain.get_blocks_for_id(&id);
                         let txs: Vec<Transaction> = blocks
                             .iter()
@@ -82,10 +85,6 @@ impl Backend {
                         skip,
                         res,
                     } => {
-                        /*println!(
-                            "Got: \"QueryPubKey {{ id: {}, limit: {}, skip: {} }}\"",
-                            id, limit, skip
-                        );*/
                         let blocks = self.chain.get_blocks_for_pub_key(&key);
                         let txs: Vec<Transaction> = blocks
                             .iter()
@@ -94,6 +93,17 @@ impl Backend {
                             .map(|b| b.get_data().clone())
                             .collect();
                         res.send(txs).expect("Failed to set \"QueryID\"result");
+                    }
+                    Operation::QueryPeers { res: _ } => {}
+                    Operation::CreateTransaction { transaction, res } => {
+                        let longest_chain = self.chain.get_longest_chain();
+                        let last_block = longest_chain.last().unwrap();
+                        let b = Block::new(last_block.calc_hash(), transaction);
+                        let msg = self.chain.push(b).or_else(|c| Err(BackendErr::ChainErr(c)));
+                        res.send(msg).expect("Failed to set error code");
+                        self.chain
+                            .write_dot("graph.dot")
+                            .expect("Failed to write dot");
                     }
                     _ => println!("Got some other op"),
                 }

@@ -1,4 +1,6 @@
+use crate::backend::BackendErr;
 use crate::blockchain::transaction::{PubKey, Transaction};
+use crate::blockchain::ChainErr;
 use crate::rest::server::Peers;
 use futures::channel::oneshot::Sender;
 
@@ -30,5 +32,8 @@ pub enum Operation {
     QueryPeers { res: Sender<Peers> },
     /// Operation that signifies that a new transaction has been made and that
     /// the backend should handle it.
-    CreateTransaction { transaction: Transaction },
+    CreateTransaction {
+        transaction: Transaction,
+        res: Sender<Result<(), BackendErr>>,
+    },
 }
