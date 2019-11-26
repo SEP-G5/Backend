@@ -1,16 +1,21 @@
+use crate::backend::{operation::Operation, BackendErr};
 use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode};
-use rocket::{self, *, http::Status};
+use futures::{channel::oneshot, Future};
+use rocket::{self, http::Status, *};
 use serde::{Deserialize, Serialize};
-use serde_json::{self, Value, json};
+use serde_json::{self, json, Value};
+use std::sync::mpsc;
+use std::sync::Mutex;
 
 // ============================================================ //
 
 /// main entry point for the REST server program
-pub fn run_server() {
+pub fn run_server(sender: mpsc::Sender<Operation>) {
     rocket::ignite()
         .mount("/", routes![index, tx_post, tx_get, peer])
+        .manage(Mutex::new(sender))
         .launch();
 }
 
@@ -24,14 +29,14 @@ struct Response {
     msg: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Peer {
-    ip: String,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Peer {
+    pub ip: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Peers {
-    peers: Vec<Peer>,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Peers {
+    pub peers: Vec<Peer>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -55,15 +60,17 @@ impl Transactions {
 }
 
 impl JsonTransactions {
-
     #[allow(dead_code)]
     fn new() -> JsonTransactions {
-        JsonTransactions{handle: Vec::new()}
+        JsonTransactions { handle: Vec::new() }
     }
 
     fn from(t: Transactions) -> JsonTransactions {
-        let vv: Vec<Value> = t.iter().map(|tx| transaction_to_json_transaction(tx) ).collect();
-        JsonTransactions{handle: vv}
+        let vv: Vec<Value> = t
+            .iter()
+            .map(|tx| transaction_to_json_transaction(tx))
+            .collect();
+        JsonTransactions { handle: vv }
     }
 
     fn to_string(&self) -> String {
@@ -180,7 +187,7 @@ fn index() -> &'static str {
 /// The client wants to create a new transaction.
 /// @param data Contains the transaction that was created by the client
 #[post("/transaction", format = "json", data = "<data>")]
-fn tx_post(data: String) -> String {
+fn tx_post(data: String, sender: State<Mutex<mpsc::Sender<Operation>>>) -> String {
     let v: Value = match serde_json::from_str(data.as_str()) {
         Ok(v) => v,
         Err(e) => return make_response(false, &format!("{}", e)),
@@ -191,28 +198,50 @@ fn tx_post(data: String) -> String {
         Err(s) => return s,
     };
 
-    // TODO ask blockchain to accept the trasaction
-    // ...
-
-
     // TEMP CODE verify the transaction, will be done by blockchain later
     match t.verify() {
         Ok(_) => {}
         Err(e) => return make_response(false, &format!("{}", e)),
     }
 
-    make_response(
-        true,
-        "The transaction was accepted! (maybe, not implemented yet ;)",
-    )
+    let (res_write, mut res_read) = oneshot::channel();
+    let tmp_op = Operation::CreateTransaction {
+        transaction: t,
+        res: res_write,
+    };
+    sender
+        .lock()
+        .expect("Failed to lock state mutex")
+        .send(tmp_op)
+        .expect("Failed to send op");
+    let result = 'wait_loop: loop {
+        match res_read.try_recv() {
+            Ok(o_ec) => {
+                if let Some(ec) = o_ec {
+                    break 'wait_loop ec;
+                }
+            }
+            Err(_) => break 'wait_loop Err(BackendErr::OpCancelled),
+        };
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+
+    match result {
+        Ok(_) => make_response(true, &format!("The transaction was accepted")),
+        Err(e) => make_response(true, &format!("The transaction was rejected: {:?}", e)),
+    }
 }
 
 /// The client wants information about the given data. Such as information
 /// about an id, or public key.
 #[get("/transaction?<id>&<publicKey>&<limit>&<skip>", format = "json")]
 #[allow(non_snake_case)]
-fn tx_get(id: Option<String>, publicKey: Option<String>,
-          limit: Option<u64>, skip: Option<u64>) -> Result<String, Status> {
+fn tx_get(
+    id: Option<String>,
+    publicKey: Option<String>,
+    limit: Option<u64>,
+    skip: Option<u64>,
+) -> Result<String, Status> {
     let pk = publicKey;
 
     let dummy_response = |id: &String| -> String {
@@ -220,7 +249,7 @@ fn tx_get(id: Option<String>, publicKey: Option<String>,
         let (t1, sk1) = Transaction::debug_make_transfer(&t0, &sk0);
         let (t2, _) = Transaction::debug_make_transfer(&t1, &sk1);
 
-        let mut ts = Transactions{handle: Vec::new()};
+        let mut ts = Transactions { handle: Vec::new() };
         ts.handle.push(t0);
         ts.handle.push(t1);
         ts.handle.push(t2);
@@ -240,9 +269,16 @@ fn tx_get(id: Option<String>, publicKey: Option<String>,
         // ...
         return Ok(dummy_response(&id.unwrap()));
     } else if pk.is_some() && id.is_some() {
-        return Err(Status{code: 400, reason: "info request has both public key and id, can only have one."});
-    } else /*if pk.is_none() && id.is_none() */ {
-        return Err(Status{code: 400, reason: "info request has no public key or id, must have one"});
+        return Err(Status {
+            code: 400,
+            reason: "info request has both public key and id, can only have one.",
+        });
+    } else {
+        /*if pk.is_none() && id.is_none() */
+        return Err(Status {
+            code: 400,
+            reason: "info request has no public key or id, must have one",
+        });
     }
 
     // TODO return status code 401 when:
