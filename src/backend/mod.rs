@@ -55,11 +55,11 @@ impl Backend {
         });
 
         // Launch P2P communicator
-        let (network, network_recv) = Network::new();
+        let (network, n2b_rx) = Network::new();
 
         // Wait on messages
         loop {
-            let res = network_recv.try_recv();
+            let res = n2b_rx.try_recv();
             if let Ok(_op) = res {
                 println!("operation on network recv");
             }

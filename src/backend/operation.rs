@@ -3,6 +3,7 @@ use crate::blockchain::transaction::{PubKey, Transaction};
 use crate::blockchain::ChainErr;
 use crate::rest::server::Peers;
 use futures::sync::oneshot::Sender;
+use crate::p2p::packet::Packet;
 
 // ========================================================================== //
 
@@ -35,5 +36,9 @@ pub enum Operation {
     CreateTransaction {
         transaction: Transaction,
         res: Sender<Result<(), BackendErr>>,
+    },
+
+    GotPacket {
+        packet: Packet,
     },
 }
