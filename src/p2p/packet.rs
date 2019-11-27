@@ -1,7 +1,7 @@
-use crate::blockchain::{transaction::Transaction, block::Block};
+use crate::blockchain::{block::Block, transaction::Transaction};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Packet {
     PostBlock(Block<Transaction>),
     GetBlock(u64),

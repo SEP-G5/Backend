@@ -8,11 +8,12 @@ use crate::blockchain::{
     Chain, ChainErr,
 };
 use crate::p2p::network::{self, Network};
+use crate::p2p::packet::Packet;
 use crate::rest::{
     self,
     server::{Peer, Peers},
 };
-use futures::{sync::oneshot};
+use futures::sync::oneshot;
 use operation::Operation;
 use std::sync::mpsc;
 use std::thread;
@@ -55,12 +56,11 @@ impl Backend {
         });
 
         // Launch P2P communicator
-        let (network, n2b_rx) = Network::new();
+        let network = Network::new();
 
         // Wait on messages
         loop {
-            let res = n2b_rx.try_recv();
-            if let Ok(_op) = res {
+            if let Ok(_op) = network.try_recv() {
                 println!("operation on network recv");
             }
 
@@ -97,7 +97,11 @@ impl Backend {
                             .collect();
                         res.send(txs).expect("Failed to set \"QueryID\"result");
                     }
-                    Operation::QueryPeers { res: _ } => {}
+                    Operation::QueryPeers { res: _ } => {
+                        println!("query peers");
+                        let packet = Packet::GetPeers;
+                        network.broadcast(&packet);
+                    }
                     Operation::CreateTransaction { transaction, res } => {
                         let longest_chain = self.chain.get_longest_chain();
                         let last_block = longest_chain.last().unwrap();

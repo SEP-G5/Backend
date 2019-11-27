@@ -1,3 +1,4 @@
+use crate::p2p::{node::Connection, node::Node, shared::Shared};
 use futures::future::{self, Either};
 use futures::try_ready;
 use std::net::SocketAddr;
@@ -5,21 +6,21 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
-use crate::backend::operation::Operation;
-use crate::p2p::{shared::Shared, node::Connection, node::Node};
+use crate::p2p::packet::Packet;
 
-pub type Tx = mpsc::Sender<Operation>;
-pub type Rx = mpsc::Receiver<Operation>;
+pub type Tx = mpsc::Sender<Packet>;
+pub type Rx = mpsc::Receiver<Packet>;
 
 /// This is the gateway to the p2p network.
 pub struct Network {
     state: Arc<Mutex<Shared>>,
+    n2b_rx: Rx,
 }
 
 impl Network {
     /// Create a new network object, and do setup
     /// @retval Rx The network-to-backend receive channel
-    pub fn new() -> (Network, Rx) {
+    pub fn new() -> Network {
         let addr = "0.0.0.0:35010"
             .parse::<SocketAddr>()
             .expect("failed to parse nettwork address");
@@ -30,6 +31,7 @@ impl Network {
 
         let network = Network {
             state: Arc::new(Mutex::new(shared)),
+            n2b_rx: rx,
         };
 
         let state = network.state.clone();
@@ -37,14 +39,26 @@ impl Network {
             Self::launch(state, listener);
         });
 
-        (network, rx)
+        network
     }
 
+    /// Try recv on the network-to-backend channel.
+    pub fn try_recv(&self) -> Result<Packet, std::sync::mpsc::TryRecvError> {
+        self.n2b_rx.try_recv()
+    }
 
-    /// [ BLOCK AHEAD  |   BLOCK    ]
-    ///    4 bytes          x bytes
-    pub fn broadcast(&self, ) {
-
+    /// Attempt to broadcast the packet to all connected nodes.
+    pub fn broadcast(&self, packet: &Packet) {
+        println!("broadcasting packet");
+        let l = self.state.lock().expect("failed to lock shared state");
+        println!("len {}", l.b2n_tx.len());
+        for (addr, tx) in l.b2n_tx.iter() {
+            println!("sending to {:?}", addr);
+            match tx.send(packet.clone()) {
+                Ok(_) => {},
+                Err(_) => println!("failed to send to node"),
+            }
+        }
     }
 
     fn launch(state: Arc<Mutex<Shared>>, listener: TcpListener) {
