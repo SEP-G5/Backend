@@ -8,11 +8,14 @@ use crate::blockchain::{
     transaction::{PubKey, Transaction},
     Chain, ChainErr,
 };
+use crate::p2p::network::{self, Network};
+use crate::p2p::packet::Packet;
 use crate::rest::{
     self,
     server::{Peer, Peers},
 };
-use futures::{channel::oneshot, Future};
+use futures::future::Future;
+use futures::{channel::oneshot, executor::block_on};
 use operation::Operation;
 use std::collections::VecDeque;
 use std::sync::mpsc;
@@ -66,13 +69,15 @@ impl Backend {
         });
 
         // Launch P2P communicator
-        let (p2p_send, p2p_recv) = mpsc::channel::<Operation>();
-        thread::spawn(move || {
-            //p2p::comm::run(p2p_recv);
-        });
+        let mut network = Network::new();
 
         // Wait on messages
         loop {
+            let res = network.try_recv();
+            if let Some(_op) = res {
+                println!("got msg from p2p network");
+            }
+
             // Handle messages from REST server
             let res = rest_recv.try_recv();
             if let Ok(op) = res {
@@ -107,7 +112,11 @@ impl Backend {
                             .collect();
                         res.send(txs).expect("Failed to set \"QueryID\"result");
                     }
-                    Operation::QueryPeers { res: _ } => {}
+                    Operation::QueryPeers { res: _ } => {
+                        println!("query peers");
+                        let packet = Packet::GetPeers;
+                        network.broadcast(packet);
+                    }
                     Operation::CreateTransaction { transaction, res } => {
                         // Broadcast the transaction
                         // TODO(Filip): Implement the transaction broadcast

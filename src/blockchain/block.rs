@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Represents a block in the blockchain
 ///
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block<T: Hashable> {
     /// Hash of the parent block
     parent: Hash,
