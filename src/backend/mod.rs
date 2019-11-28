@@ -13,6 +13,7 @@ use crate::rest::{
     self,
     server::{Peer, Peers},
 };
+use futures::future::Future;
 use futures::{channel::oneshot, executor::block_on};
 use operation::Operation;
 use std::sync::mpsc;
@@ -56,20 +57,14 @@ impl Backend {
         });
 
         // Launch P2P communicator
-        let network = Network::new();
+        let mut network = Network::new();
 
         // Wait on messages
         loop {
-
-            /*
-                let fut_packet = network.recv();
-                fut_packet.
-
-                    if let Ok(_op) = network.try_recv() {
-                        println!("operation on network recv");
-                    }
-            */
-
+            let res = network.try_recv();
+            if let Some(_op) = res {
+                println!("got msg from p2p network");
+            }
 
             let res = rest_recv.try_recv();
             if let Ok(op) = res {

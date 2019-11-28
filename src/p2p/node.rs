@@ -61,6 +61,11 @@ impl Node {
                 // process messages from backend
                 Ok(PacketFrom::Backend(packet)) => {
                     println!("packet from backend");
+                    let packet = Packet::GetBlock(1337);
+                    match self.state.lock().await.n2b_tx.send(packet).await {
+                        Ok(_) => (),
+                        Err(_) => (),
+                    }
                 }
                 Err(e) => {
                     println!(

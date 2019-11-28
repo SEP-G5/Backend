@@ -3,6 +3,7 @@ use crate::p2p::{node::Node, shared::Shared};
 use futures::executor::block_on;
 use std::error::Error;
 use std::net::SocketAddr;
+use std::sync;
 use std::sync::Arc;
 use std::thread;
 use tokio::net::{TcpListener, TcpStream};
@@ -11,10 +12,14 @@ use tokio::sync::{mpsc, Mutex};
 pub type Tx = mpsc::Sender<Packet>;
 pub type Rx = mpsc::Receiver<Packet>;
 
+type StdRx = std::sync::mpsc::Receiver<Packet>;
+type StdTx = std::sync::mpsc::Sender<Packet>;
+
 /// This is the gateway to the p2p network.
 pub struct Network {
     state: Arc<Mutex<Shared>>,
-    n2b_rx: Rx,
+    //n2b_rx: Rx,
+    n2b_rx: StdRx,
 }
 
 impl Network {
@@ -22,21 +27,23 @@ impl Network {
     /// @retval Rx The network-to-backend receive channel
     pub fn new() -> Network {
         let (tx, rx) = mpsc::channel(1337);
+        let (stdtx, stdrx) = std::sync::mpsc::channel();
         let shared = Shared::new(tx);
-
         let network = Network {
             state: Arc::new(Mutex::new(shared)),
-            n2b_rx: rx,
+            n2b_rx: stdrx,
         };
 
-        block_on(network.run());
-
+        block_on(network.run(rx, stdtx));
         network
     }
 
     /// Try recv on the network-to-backend channel.
-    pub async fn recv(&mut self) -> Option<Packet> {
-        self.n2b_rx.recv().await
+    pub fn try_recv(&mut self) -> Option<Packet> {
+        match self.n2b_rx.try_recv() {
+            Ok(p) => Some(p),
+            Err(_) => panic!("n2b_rx channel broken"),
+        }
     }
 
     pub fn broadcast(&self, packet: Packet) {
@@ -56,16 +63,25 @@ impl Network {
         }
     }
 
-    async fn run(&self) {
+    async fn run(&self, mut rx: Rx, stdtx: StdTx) {
         let addr = "0.0.0.0:35010"
             .parse::<SocketAddr>()
             .expect("failed to parse nettwork address");
         let mut listener = TcpListener::bind(&addr).await.expect("failed to bind");
 
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Some(packet) => stdtx.send(packet).expect("n2b_rx channel broken"),
+                    None => (),
+                }
+            }
+        });
+
         let state = self.state.clone();
         tokio::spawn(async move {
             loop {
-                let (mut stream, _) = match listener.accept().await {
+                let (stream, _) = match listener.accept().await {
                     Ok(b) => b,
                     Err(e) => panic!("listener socket error {:?}", e),
                 };
