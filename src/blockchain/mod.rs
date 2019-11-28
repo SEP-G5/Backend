@@ -17,7 +17,7 @@ use transaction::{PubKey, Transaction};
 const TX_RELATION_COLOR: &str = "blue";
 
 // Hash end pattern
-const HASH_END_PATTERN: &str = "0000";
+const HASH_END_PATTERN: &str = "000";
 
 // ========================================================================== //
 
@@ -29,6 +29,7 @@ pub enum ChainErr {
     BadParent,
     NonUniqueTransactionID,
     BadTransaction(String),
+    BadHash,
 }
 
 // ========================================================================== //
@@ -108,8 +109,19 @@ impl Chain {
         chain
     }
 
-    /// Push a new block at the end of the blockchain.
+    /// Push a new block at the end of the blockchain
     pub fn push(&mut self, block: BlockType) -> Result<(), ChainErr> {
+        // Check that the block has a valid hash
+        let hash_str = hash::hash_to_str(&block.calc_hash());
+        if !hash_str.ends_with(HASH_END_PATTERN) {
+            return Err(ChainErr::BadHash);
+        }
+
+        self.push_ignore_hash(block)
+    }
+
+    /// Push a new block at the end of the blockchain, ignoring the hash check.
+    pub fn push_ignore_hash(&mut self, block: BlockType) -> Result<(), ChainErr> {
         // 1. Check valid signature (register and transfer)
         if let Err(e) = block.get_data().verify() {
             return Err(ChainErr::BadTransaction(e));
@@ -416,9 +428,15 @@ mod tests {
         let block_1 = Block::new(block_0.calc_hash(), t1);
         let block_2 = Block::new(block_1.calc_hash(), t2);
 
-        chain.push(block_0).expect("Chain::push failure (0)");
-        chain.push(block_1).expect("Chain::push failure (1)");
-        chain.push(block_2).expect("Chain::push failure (2)");
+        chain
+            .push_ignore_hash(block_0)
+            .expect("Chain::push failure (0)");
+        chain
+            .push_ignore_hash(block_1)
+            .expect("Chain::push failure (1)");
+        chain
+            .push_ignore_hash(block_2)
+            .expect("Chain::push failure (2)");
 
         assert_eq!(
             chain.block_count(),
@@ -445,10 +463,18 @@ mod tests {
         let block_2 = Block::new(block_0.calc_hash(), t2);
         let block_3 = Block::new(block_1.calc_hash(), t3);
 
-        chain.push(block_0).expect("Chain::push failure (0)");
-        chain.push(block_1).expect("Chain::push failure (1)");
-        chain.push(block_2).expect("Chain::push failure (2)");
-        chain.push(block_3).expect("Chain::push failure (3)");
+        chain
+            .push_ignore_hash(block_0)
+            .expect("Chain::push failure (0)");
+        chain
+            .push_ignore_hash(block_1)
+            .expect("Chain::push failure (1)");
+        chain
+            .push_ignore_hash(block_2)
+            .expect("Chain::push failure (2)");
+        chain
+            .push_ignore_hash(block_3)
+            .expect("Chain::push failure (3)");
     }
 
     #[test]
@@ -481,17 +507,39 @@ mod tests {
         let block_9 = Block::new(block_8.calc_hash(), t9);
         let block_10 = Block::new(block_9.calc_hash(), t10);
 
-        chain.push(block_0).expect("Chain::push failure (0)");
-        chain.push(block_1).expect("Chain::push failure (1)");
-        chain.push(block_2).expect("Chain::push failure (2)");
-        chain.push(block_3).expect("Chain::push failure (3)");
-        chain.push(block_4).expect("Chain::push failure (4)");
-        chain.push(block_5).expect("Chain::push failure (5)");
-        chain.push(block_6).expect("Chain::push failure (6)");
-        chain.push(block_7).expect("Chain::push failure (7)");
-        chain.push(block_8).expect("Chain::push failure (8)");
-        chain.push(block_9).expect("Chain::push failure (9)");
-        chain.push(block_10).expect("Chain::push failure (10)");
+        chain
+            .push_ignore_hash(block_0)
+            .expect("Chain::push failure (0)");
+        chain
+            .push_ignore_hash(block_1)
+            .expect("Chain::push failure (1)");
+        chain
+            .push_ignore_hash(block_2)
+            .expect("Chain::push failure (2)");
+        chain
+            .push_ignore_hash(block_3)
+            .expect("Chain::push failure (3)");
+        chain
+            .push_ignore_hash(block_4)
+            .expect("Chain::push failure (4)");
+        chain
+            .push_ignore_hash(block_5)
+            .expect("Chain::push failure (5)");
+        chain
+            .push_ignore_hash(block_6)
+            .expect("Chain::push failure (6)");
+        chain
+            .push_ignore_hash(block_7)
+            .expect("Chain::push failure (7)");
+        chain
+            .push_ignore_hash(block_8)
+            .expect("Chain::push failure (8)");
+        chain
+            .push_ignore_hash(block_9)
+            .expect("Chain::push failure (9)");
+        chain
+            .push_ignore_hash(block_10)
+            .expect("Chain::push failure (10)");
     }
 
     #[test]
@@ -507,8 +555,12 @@ mod tests {
         let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
         let block_1 = Block::new(hash::EMPTY_HASH, t1);
 
-        chain.push(block_0).expect("Chain::push failure (0)");
-        chain.push(block_1).expect("Chain::push failure (1)");
+        chain
+            .push_ignore_hash(block_0)
+            .expect("Chain::push failure (0)");
+        chain
+            .push_ignore_hash(block_1)
+            .expect("Chain::push failure (1)");
     }
 
     /// Test to see that duplicate IDs of transactions are not allowed.
@@ -525,8 +577,12 @@ mod tests {
         let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
         let block_1 = Block::new(block_0.calc_hash(), t1);
 
-        chain.push(block_0).expect("Chain::push failure (0)");
-        chain.push(block_1).expect("Chain::push failure (1)");
+        chain
+            .push_ignore_hash(block_0)
+            .expect("Chain::push failure (0)");
+        chain
+            .push_ignore_hash(block_1)
+            .expect("Chain::push failure (1)");
     }
 
     /// Test to see that a tampered transaction produces a verification error.
@@ -544,7 +600,9 @@ mod tests {
         // Blocks
         let block_0 = Block::new(chain.get_genesis_block().calc_hash(), t0);
 
-        chain.push(block_0).expect("Chain::push failure");
+        chain
+            .push_ignore_hash(block_0)
+            .expect("Chain::push failure");
     }
 
     #[test]
@@ -563,10 +621,18 @@ mod tests {
         let block_2 = Block::new(block_1.calc_hash(), t2);
         let block_3 = Block::new(block_2.calc_hash(), t3);
 
-        chain.push(block_0).expect("Chain::push failure (0)");
-        chain.push(block_1).expect("Chain::push failure (1)");
-        chain.push(block_2).expect("Chain::push failure (2)");
-        chain.push(block_3).expect("Chain::push failure (3)");
+        chain
+            .push_ignore_hash(block_0)
+            .expect("Chain::push failure (0)");
+        chain
+            .push_ignore_hash(block_1)
+            .expect("Chain::push failure (1)");
+        chain
+            .push_ignore_hash(block_2)
+            .expect("Chain::push failure (2)");
+        chain
+            .push_ignore_hash(block_3)
+            .expect("Chain::push failure (3)");
 
         let q_id = "SN1337BIKE";
         let q = chain.get_blocks_for_id(q_id);
@@ -591,16 +657,22 @@ mod tests {
         let block_2 = Block::new(block_1.calc_hash(), t2);
         let block_3 = Block::new(block_2.calc_hash(), t3);
 
-        chain.push(block_0).expect("Chain::push failure (0)");
-        chain.push(block_1).expect("Chain::push failure (1)");
-        chain.push(block_2).expect("Chain::push failure (2)");
-        chain.push(block_3).expect("Chain::push failure (3)");
+        chain
+            .push_ignore_hash(block_0)
+            .expect("Chain::push failure (0)");
+        chain
+            .push_ignore_hash(block_1)
+            .expect("Chain::push failure (1)");
+        chain
+            .push_ignore_hash(block_2)
+            .expect("Chain::push failure (2)");
+        chain
+            .push_ignore_hash(block_3)
+            .expect("Chain::push failure (3)");
 
         let q = chain.get_blocks_for_pub_key(&pub_key);
         assert_eq!(q.len(), 2, "The two blocks between which the ownership of the bike is first transferred should be found");
     }
-
-    use std::time::Instant;
 
     #[test]
     fn test_mine() {
@@ -642,7 +714,21 @@ mod tests {
             hash
         );
         chain.push(block).expect("Chain::push failure (0)");
+    }
 
-        chain.write_dot("graph.dot");
+    #[test]
+    #[should_panic(expected = "Chain::push failure: BadHash")]
+    fn test_bad_hash() {
+        let mut chain = Chain::new();
+
+        let (t0, _) = Transaction::debug_make_register(format!("SN1337BIKE"));
+
+        // Make bad block
+        let mut block = Block::new(chain.get_genesis_block().calc_hash(), t0);
+        while hash::hash_to_str(&block.calc_hash()).ends_with(HASH_END_PATTERN) {
+            block.inc_nonce();
+        }
+
+        chain.push(block).expect("Chain::push failure");
     }
 }
