@@ -13,7 +13,7 @@ use crate::rest::{
     self,
     server::{Peer, Peers},
 };
-use futures::sync::oneshot;
+use futures::{channel::oneshot, executor::block_on};
 use operation::Operation;
 use std::sync::mpsc;
 use std::thread;
@@ -60,9 +60,16 @@ impl Backend {
 
         // Wait on messages
         loop {
-            if let Ok(_op) = network.try_recv() {
-                println!("operation on network recv");
-            }
+
+            /*
+                let fut_packet = network.recv();
+                fut_packet.
+
+                    if let Ok(_op) = network.try_recv() {
+                        println!("operation on network recv");
+                    }
+            */
+
 
             let res = rest_recv.try_recv();
             if let Ok(op) = res {
@@ -100,7 +107,7 @@ impl Backend {
                     Operation::QueryPeers { res: _ } => {
                         println!("query peers");
                         let packet = Packet::GetPeers;
-                        network.broadcast(&packet);
+                        network.broadcast(packet);
                     }
                     Operation::CreateTransaction { transaction, res } => {
                         let longest_chain = self.chain.get_longest_chain();

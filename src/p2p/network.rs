@@ -1,12 +1,12 @@
-use crate::p2p::{node::Connection, node::Node, shared::Shared};
-use futures::future::{self, Either};
-use futures::try_ready;
+use crate::p2p::packet::{Packet, PacketErr};
+use crate::p2p::{node::Node, shared::Shared};
+use futures::executor::block_on;
+use std::error::Error;
 use std::net::SocketAddr;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::prelude::*;
-use crate::p2p::packet::Packet;
+use tokio::sync::{mpsc, Mutex};
 
 pub type Tx = mpsc::Sender<Packet>;
 pub type Rx = mpsc::Receiver<Packet>;
@@ -21,12 +21,7 @@ impl Network {
     /// Create a new network object, and do setup
     /// @retval Rx The network-to-backend receive channel
     pub fn new() -> Network {
-        let addr = "0.0.0.0:35010"
-            .parse::<SocketAddr>()
-            .expect("failed to parse nettwork address");
-        let listener = TcpListener::bind(&addr).expect("failed to bind");
-
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel(1337);
         let shared = Shared::new(tx);
 
         let network = Network {
@@ -34,59 +29,53 @@ impl Network {
             n2b_rx: rx,
         };
 
-        let state = network.state.clone();
-        thread::spawn(move || {
-            Self::launch(state, listener);
-        });
+        block_on(network.run());
 
         network
     }
 
     /// Try recv on the network-to-backend channel.
-    pub fn try_recv(&self) -> Result<Packet, std::sync::mpsc::TryRecvError> {
-        self.n2b_rx.try_recv()
+    pub async fn recv(&mut self) -> Option<Packet> {
+        self.n2b_rx.recv().await
+    }
+
+    pub fn broadcast(&self, packet: Packet) {
+        block_on(self.broadcast_internal(packet));
     }
 
     /// Attempt to broadcast the packet to all connected nodes.
-    pub fn broadcast(&self, packet: &Packet) {
+    pub async fn broadcast_internal(&self, packet: Packet) {
         println!("broadcasting packet");
-        let l = self.state.lock().expect("failed to lock shared state");
-        println!("len {}", l.b2n_tx.len());
-        for (addr, tx) in l.b2n_tx.iter() {
+        let nodes = &mut self.state.lock().await.b2n_tx;
+        for (addr, tx) in nodes.iter_mut() {
             println!("sending to {:?}", addr);
-            match tx.send(packet.clone()) {
-                Ok(_) => {},
+            match tx.send(packet.clone()).await {
+                Ok(_) => {}
                 Err(_) => println!("failed to send to node"),
             }
         }
     }
 
-    fn launch(state: Arc<Mutex<Shared>>, listener: TcpListener) {
-        let server = listener
-            .incoming()
-            .map_err(|e| println!("error {:?}", e))
-            .for_each(move |socket| {
-                on_connection(socket, state.clone());
-                Ok(())
-            });
-        tokio::run(server);
-    }
-}
+    async fn run(&self) {
+        let addr = "0.0.0.0:35010"
+            .parse::<SocketAddr>()
+            .expect("failed to parse nettwork address");
+        let mut listener = TcpListener::bind(&addr).await.expect("failed to bind");
 
-fn on_connection(stream: TcpStream, state: Arc<Mutex<Shared>>) {
-    let connection = Connection::new(stream);
+        let state = self.state.clone();
+        tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = match listener.accept().await {
+                    Ok(b) => b,
+                    Err(e) => panic!("listener socket error {:?}", e),
+                };
 
-    let fut = connection
-        .into_future()
-        .map_err(|(e, _)| e)
-        .and_then(|(a, connection)| {
-            let node = Node::new(connection, state);
-            println!("new connection: {:?}", node.get_addr());
-            node
-        })
-        .map_err(|e| {
-            println!("connection error [{:?}]", e);
+                let state = state.clone();
+                tokio::spawn(async move {
+                    let mut node = Node::new(stream, state).await;
+                    node.run().await;
+                });
+            }
         });
-
-    tokio::spawn(fut);
+    }
 }

@@ -2,7 +2,7 @@ use crate::backend::{operation::Operation, BackendErr};
 use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode};
-use futures::sync::oneshot;
+use futures::channel::oneshot;
 use rocket::{self, http::Status, *};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
@@ -288,22 +288,21 @@ fn tx_get(
 
 #[get("/peer")]
 fn peer(sender: State<Mutex<mpsc::Sender<Operation>>>) -> String {
-
     let (res_write, mut res_read) = oneshot::channel();
-    let op = Operation::QueryPeers {res: res_write};
+    let op = Operation::QueryPeers { res: res_write };
     sender
         .lock()
         .expect("Failed to lock state mutex")
         .send(op)
         .expect("Failed to send op");
-    let peers  = 'wait_loop: loop {
+    let peers = 'wait_loop: loop {
         match res_read.try_recv() {
             Ok(o_peers) => {
                 if let Some(peers) = o_peers {
                     break 'wait_loop peers;
                 }
             }
-            Err(_) => break 'wait_loop Peers{peers: Vec::new()},
+            Err(_) => break 'wait_loop Peers { peers: Vec::new() },
         };
         std::thread::sleep(std::time::Duration::from_millis(5));
     };
@@ -311,20 +310,20 @@ fn peer(sender: State<Mutex<mpsc::Sender<Operation>>>) -> String {
     serde_json::to_string(&peers).expect("failed to convert to json")
 
     /*
-    // TODO ask the network for list of peers
-    let mut p = Peers { peers: Vec::new() };
-    p.peers.push(Peer {
-        ip: format!("123.123.123.123"),
-    });
-    p.peers.push(Peer {
-        ip: format!("1.2.3.4"),
-    });
-    p.peers.push(Peer {
-        ip: format!("11.22.33.44"),
-    });
-    p.peers.push(Peer {
-        ip: format!("101.202.30.40"),
-    });
-    serde_json::to_string(&p).expect("failed to convert to json")
-*/
+        // TODO ask the network for list of peers
+        let mut p = Peers { peers: Vec::new() };
+        p.peers.push(Peer {
+            ip: format!("123.123.123.123"),
+        });
+        p.peers.push(Peer {
+            ip: format!("1.2.3.4"),
+        });
+        p.peers.push(Peer {
+            ip: format!("11.22.33.44"),
+        });
+        p.peers.push(Peer {
+            ip: format!("101.202.30.40"),
+        });
+        serde_json::to_string(&p).expect("failed to convert to json")
+    */
 }

@@ -1,9 +1,10 @@
 use crate::p2p::network::Tx;
+use crate::p2p::packet::Packet;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use tokio::prelude::task::Task;
-use crate::p2p::packet::Packet;
+//use tokiotask::Task;
 
+/*
 /// Backend-to-Network communication structure.
 pub struct B2NTx {
     /// transmit channel
@@ -26,10 +27,11 @@ impl B2NTx {
         }
     }
 }
+*/
 
 pub struct Shared {
     /// Maps nodes to the send half of the backend-to-network channel
-    pub b2n_tx: HashMap<SocketAddr, B2NTx>,
+    pub b2n_tx: HashMap<SocketAddr, Tx>,
 
     /// network-to-backend channel, for use by the nodes when sending to backend.
     pub n2b_tx: Tx,

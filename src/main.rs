@@ -8,13 +8,16 @@ mod rest;
 // ========================================================================== //
 
 use backend::Backend;
+use std::error::Error;
 
 // ========================================================================== //
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let mut backend = Backend::new();
     backend.run();
 
+    Ok(())
     /*
     // Launch REST server
     let (tx, rx) = mpsc::channel();

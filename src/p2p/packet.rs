@@ -1,5 +1,13 @@
 use crate::blockchain::{block::Block, transaction::Transaction};
+use bytes::buf::BufMut;
+use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
+use std::fmt;
+use std::io;
+use tokio_util::codec::{Decoder, Encoder};
+
+// ============================================================ //
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Packet {
@@ -10,62 +18,108 @@ pub enum Packet {
     PostTx(Transaction),
 }
 
-/*
-#[repr(u32)]
-enum PacketType {
-    PostBlock = 0,
-    GetPeers = 1,
-    GetBlock = 2,
-    PostTx = 3,
-}
-
-struct Packet {
-    buf: Vec<u8>,
-}
-
-const HEADER_LEN: usize = 12;
-
-fn set_header(packet_type: PacketType, payload_len: u64,
-              buf: &mut [u8; HEADER_LEN]) {
-
-}
-
 impl Packet {
-
-
-
-    pub fn new(capacity: usize) -> Packet {
-        Packet {
-            buf: Vec::with_capacity(capacity),
+    fn from_bytes_mut(buf: &mut BytesMut) -> Result<Packet, PacketErr> {
+        let packet_buf = buf.split();
+        match bincode::deserialize(&packet_buf) {
+            Ok(packet) => Ok(packet),
+            Err(e) => Err(PacketErr::Deserialize(format!(
+                "failed to deserialize packet [{:?}]",
+                e
+            ))),
         }
     }
 
-    /// Can fail if header is invalid
-    pub fn from(buf: &[u8]) -> Result<Packet, ()> {
-        if buf.len() < HEADER_LEN + 1 {
-            return Err(());
+    fn to_bytes_mut(&self, buf: &mut BytesMut) -> Option<PacketErr> {
+        /*
+        let len = match bincode::serialized_size(self) {
+            Ok(len) => len as usize,
+            Err(e) => return Some(PacketErr::Other(format!("could not estimate packet size [{:?}]", e))),
+        };
+        buf.reserve(len);
+
+        match bincode::serialize_into(buf.as_mut(), self) {
+        Ok(_) => None,
+        Err(e) => Some(PacketErr::Serialize(format!(
+            "failed to serialize packet [{:?}]",e))),
         }
+         */
 
-        let packet = Packet::new(buf.len());
+        // TODO we are allocating one extra packet here, we shouldnt
+        let tmp_vec = match bincode::serialize(self) {
+            Ok(tmp_vec) => tmp_vec,
+            Err(e) => {
+                return Some(PacketErr::Serialize(format!(
+                    "failed to serialize packet [{:?}]",
+                    e
+                )))
+            }
+        };
 
-
-        Ok(packet)
-    }
-
-    pub fn set_payload(&self, payload: &[u8]) {
-        if self.buf.len() > HEADER_LEN {
-            self.buf.truncate(HEADER_LEN);
-        }
-        self.buf.reserve(payload.len() + HEADER_LEN); // this needed?
-        self.buf.extend_from_slice(payload);
-    }
-
-    pub fn get_payload(&self) -> &[u8] {
-        &self.buf[HEADER_LEN..]
-    }
-
-    pub fn to(&self) -> (Header, Bytes) {
-
+        buf.reserve(tmp_vec.len());
+        buf.put_slice(tmp_vec.as_slice());
+        None
     }
 }
-*/
+
+#[derive(Debug)]
+pub enum PacketErr {
+    Deserialize(String),
+    Serialize(String),
+    Other(String),
+}
+
+impl fmt::Display for PacketErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PacketErr::Deserialize(s) => write!(f, "{}", s),
+            PacketErr::Serialize(s) => write!(f, "{}", s),
+            PacketErr::Other(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+impl From<io::Error> for PacketErr {
+    fn from(e: io::Error) -> Self {
+        PacketErr::Other(format!("{}", e))
+    }
+}
+
+// ============================================================ //
+
+#[derive(Clone, Debug)]
+pub struct PacketCodec(());
+
+impl PacketCodec {
+    pub fn new() -> PacketCodec {
+        PacketCodec(())
+    }
+}
+
+impl Decoder for PacketCodec {
+    type Item = Packet;
+    type Error = PacketErr;
+
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if !buf.is_empty() {
+            match Packet::from_bytes_mut(buf) {
+                Ok(packet) => Ok(Some(packet)),
+                Err(e) => Err(e),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl Encoder for PacketCodec {
+    type Item = Packet;
+    type Error = PacketErr;
+
+    fn encode(&mut self, packet: Packet, buf: &mut BytesMut) -> Result<(), PacketErr> {
+        match packet.to_bytes_mut(buf) {
+            None => Ok(()),
+            Some(e) => Err(e),
+        }
+    }
+}
