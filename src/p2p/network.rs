@@ -42,6 +42,7 @@ impl Network {
     pub fn try_recv(&mut self) -> Option<Packet> {
         match self.n2b_rx.try_recv() {
             Ok(p) => Some(p),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
             Err(_) => panic!("n2b_rx channel broken"),
         }
     }
