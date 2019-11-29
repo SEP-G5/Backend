@@ -119,9 +119,6 @@ impl Backend {
                         network.broadcast(packet);
                     }
                     Operation::CreateTransaction { transaction, res } => {
-                        // Broadcast the transaction
-                        // TODO(Filip): Implement the transaction broadcast
-
                         // Would the transaction be valid
                         let block = Block::new(
                             self.chain.get_last_block().calc_hash(),
@@ -131,7 +128,9 @@ impl Backend {
                             res.send(Err(BackendErr::ChainErr(e)))
                                 .expect("Failed to send");
                         } else {
-                            self.enqueue_tx(transaction);
+                            self.enqueue_tx(transaction.clone());
+                            let packet = Packet::PostTx(transaction);
+                            network.broadcast(packet);
                             res.send(Ok(())).expect("Failed to send");
                         }
                     }
