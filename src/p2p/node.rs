@@ -57,14 +57,17 @@ impl Node {
                 // process messages from the remote node
                 Ok(PacketFrom::P2P(packet)) => {
                     println!("packet from p2p");
+                    match self.state.lock().await.n2b_tx.send(packet).await {
+                        Ok(_) => (),
+                        Err(_) => (),
+                    }
                 }
                 // process messages from backend
                 Ok(PacketFrom::Backend(packet)) => {
                     println!("packet from backend");
-                    let packet = Packet::GetBlock(1337);
-                    match self.state.lock().await.n2b_tx.send(packet).await {
+                    match self.packets.send(packet).await {
                         Ok(_) => (),
-                        Err(_) => (),
+                        Err(e) => println!("failed to send to node [{:?}]", e),
                     }
                 }
                 Err(e) => {
