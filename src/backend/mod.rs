@@ -20,6 +20,7 @@ use operation::Operation;
 use std::collections::VecDeque;
 use std::sync::mpsc;
 use std::thread;
+use rand::distributions::weighted::alias_method::Weight;
 
 // ========================================================================== //
 
@@ -92,7 +93,7 @@ impl Backend {
                         let txs: Vec<Transaction> = blocks
                             .iter()
                             .skip(skip)
-                            .take(limit)
+                            .take(if limit == 0 {usize::MAX} else {limit} )
                             .map(|b| b.get_data().clone())
                             .collect();
                         res.send(txs).expect("Failed to set \"QueryID\"result");

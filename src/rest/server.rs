@@ -40,11 +40,6 @@ pub struct Peers {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Transactions {
-    handle: Vec<Transaction>,
-}
-
-#[derive(Serialize, Deserialize)]
 struct JsonTransactions {
     handle: Vec<Value>,
 }
@@ -53,19 +48,13 @@ struct JsonTransactions {
 // impls
 // ============================================================ //
 
-impl Transactions {
-    pub fn iter(&self) -> std::slice::Iter<Transaction> {
-        self.handle.iter()
-    }
-}
-
 impl JsonTransactions {
     #[allow(dead_code)]
     fn new() -> JsonTransactions {
         JsonTransactions { handle: Vec::new() }
     }
 
-    fn from(t: Transactions) -> JsonTransactions {
+    fn from(t: Vec<Transaction>) -> JsonTransactions {
         let vv: Vec<Value> = t
             .iter()
             .map(|tx| transaction_to_json_transaction(tx))
@@ -175,6 +164,30 @@ fn json_transaction_to_transaction(v: &Value) -> Result<Transaction, String> {
     ))
 }
 
+fn block_until_response<T>(
+    op: Operation,
+    sender: State<Mutex<mpsc::Sender<Operation>>>,
+    mut res_read: oneshot::Receiver<T>,
+) -> Result<T, BackendErr> {
+    sender
+        .lock()
+        .expect("Failed to lock state mutex")
+        .send(op)
+        .expect("Failed to send op");
+    let result = 'wait_loop: loop {
+        match res_read.try_recv() {
+            Ok(o_ec) => {
+                if let Some(ec) = o_ec {
+                    break 'wait_loop Ok(ec);
+                }
+            }
+            Err(_) => break 'wait_loop Err(BackendErr::OpCancelled),
+        };
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+    result
+}
+
 // ============================================================ //
 // paths
 // ============================================================ //
@@ -195,40 +208,26 @@ fn tx_post(data: String, sender: State<Mutex<mpsc::Sender<Operation>>>) -> Strin
 
     let t: Transaction = match json_transaction_to_transaction(&v) {
         Ok(t) => t,
-        Err(s) => return s,
+        Err(s) => return make_response(false, &format!("{}", s)),
     };
 
-    // TEMP CODE verify the transaction, will be done by blockchain later
     match t.verify() {
         Ok(_) => {}
         Err(e) => return make_response(false, &format!("{}", e)),
     }
 
     let (res_write, mut res_read) = oneshot::channel();
-    let tmp_op = Operation::CreateTransaction {
+    let op = Operation::CreateTransaction {
         transaction: t,
         res: res_write,
     };
-    sender
-        .lock()
-        .expect("Failed to lock state mutex")
-        .send(tmp_op)
-        .expect("Failed to send op");
-    let result = 'wait_loop: loop {
-        match res_read.try_recv() {
-            Ok(o_ec) => {
-                if let Some(ec) = o_ec {
-                    break 'wait_loop ec;
-                }
-            }
-            Err(_) => break 'wait_loop Err(BackendErr::OpCancelled),
-        };
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    };
 
+    let result = block_until_response(op, sender, res_read);
     match result {
-        Ok(_) => make_response(true, &format!("The transaction was accepted")),
-        Err(e) => make_response(true, &format!("The transaction was rejected: {:?}", e)),
+        Ok(Ok(_)) => {
+            make_response(true, &format!("The transaction was accepted"))
+        },
+        Err(e) | Ok(Err(e)) => make_response(false, &format!("The transaction was rejected: {:?}", e)),
     }
 }
 
@@ -241,33 +240,36 @@ fn tx_get(
     publicKey: Option<String>,
     limit: Option<u64>,
     skip: Option<u64>,
+    sender: State<Mutex<mpsc::Sender<Operation>>>
 ) -> Result<String, Status> {
     let pk = publicKey;
 
-    let dummy_response = |id: &String| -> String {
-        let (t0, sk0) = Transaction::debug_make_register(id.clone());
-        let (t1, sk1) = Transaction::debug_make_transfer(&t0, &sk0);
-        let (t2, _) = Transaction::debug_make_transfer(&t1, &sk1);
-
-        let mut ts = Transactions { handle: Vec::new() };
-        ts.handle.push(t0);
-        ts.handle.push(t1);
-        ts.handle.push(t2);
-
-        let jt = JsonTransactions::from(ts);
-        jt.to_string()
-    };
-
-    // TODO limit & skip should not be noop's
+    let (res_write, mut res_read) = oneshot::channel();
+    let mut op: Operation;
 
     if id.is_none() && pk.is_some() {
-        // TODO ask the blockchain for all transactions with a given pk
-        // ...
-        return Ok(dummy_response(&pk.unwrap()));
+        let pk_vec = match decode_config(&pk.unwrap().as_bytes(), base64::STANDARD) {
+            Ok(v) => v,
+            Err(_) => {
+                return Err(Status {
+                    code: 400,
+                    reason: "Could not decode signature from base64"
+                });
+            }
+        };
+        op = Operation::QueryPubKey {
+            key: pk_vec,
+            limit: limit.unwrap_or(0) as usize,
+            skip: skip.unwrap_or(0) as usize,
+            res: res_write,
+        };
     } else if id.is_some() && pk.is_none() {
-        // TODO ask the blockchain for all transactions with a given id
-        // ...
-        return Ok(dummy_response(&id.unwrap()));
+        op = Operation::QueryID {
+            id: id.unwrap(),
+            limit: limit.unwrap_or(0) as usize,
+            skip: skip.unwrap_or(0) as usize,
+            res: res_write,
+        };
     } else if pk.is_some() && id.is_some() {
         return Err(Status {
             code: 400,
@@ -281,9 +283,21 @@ fn tx_get(
         });
     }
 
-    // TODO return status code 401 when:
-    //  * In a Registration, the bike has already an owner
-    //  * In a Transfer, the public key is not the owner of the bike
+    let result = block_until_response(op, sender, res_read);
+    match result {
+        Ok(txs) => {
+            match txs.len() {
+                0 => {
+                    return Err(Status {code: 401, reason: "No transaction found for the given information"});
+                },
+                _ => {
+                    let jt = JsonTransactions::from(txs);
+                    return Ok(jt.to_string());
+                }
+            }
+        },
+        Err(_) => return Err(Status {code: 401, reason: "The transaction was rejected"}),
+    }
 }
 
 #[get("/peer")]
@@ -308,22 +322,4 @@ fn peer(sender: State<Mutex<mpsc::Sender<Operation>>>) -> String {
     };
 
     serde_json::to_string(&peers).expect("failed to convert to json")
-
-    /*
-        // TODO ask the network for list of peers
-        let mut p = Peers { peers: Vec::new() };
-        p.peers.push(Peer {
-            ip: format!("123.123.123.123"),
-        });
-        p.peers.push(Peer {
-            ip: format!("1.2.3.4"),
-        });
-        p.peers.push(Peer {
-            ip: format!("11.22.33.44"),
-        });
-        p.peers.push(Peer {
-            ip: format!("101.202.30.40"),
-        });
-        serde_json::to_string(&p).expect("failed to convert to json")
-    */
 }
