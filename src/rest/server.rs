@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
 use std::sync::mpsc;
 use std::sync::Mutex;
+use std::usize;
 
 // ============================================================ //
 
@@ -224,10 +225,10 @@ fn tx_post(data: String, sender: State<Mutex<mpsc::Sender<Operation>>>) -> Strin
 
     let result = block_until_response(op, sender, res_read);
     match result {
-        Ok(Ok(_)) => {
-            make_response(true, &format!("The transaction was accepted"))
-        },
-        Err(e) | Ok(Err(e)) => make_response(false, &format!("The transaction was rejected: {:?}", e)),
+        Ok(Ok(_)) => make_response(true, &format!("The transaction was accepted")),
+        Err(e) | Ok(Err(e)) => {
+            make_response(false, &format!("The transaction was rejected: {:?}", e))
+        }
     }
 }
 
@@ -240,12 +241,12 @@ fn tx_get(
     publicKey: Option<String>,
     limit: Option<u64>,
     skip: Option<u64>,
-    sender: State<Mutex<mpsc::Sender<Operation>>>
+    sender: State<Mutex<mpsc::Sender<Operation>>>,
 ) -> Result<String, Status> {
     let pk = publicKey;
 
-    let (res_write, mut res_read) = oneshot::channel();
-    let mut op: Operation;
+    let (res_write, res_read) = oneshot::channel();
+    let op: Operation;
 
     if id.is_none() && pk.is_some() {
         let pk_vec = match decode_config(&pk.unwrap().as_bytes(), base64::STANDARD) {
@@ -253,21 +254,33 @@ fn tx_get(
             Err(_) => {
                 return Err(Status {
                     code: 400,
-                    reason: "Could not decode signature from base64"
+                    reason: "Could not decode signature from base64",
                 });
             }
         };
         op = Operation::QueryPubKey {
             key: pk_vec,
-            limit: limit.unwrap_or(0) as usize,
-            skip: skip.unwrap_or(0) as usize,
+            limit: match limit {
+                Some(limit) => limit as usize,
+                None => usize::MAX,
+            },
+            skip: match skip {
+                Some(skip) => skip as usize,
+                None => usize::MAX,
+            },
             res: res_write,
         };
     } else if id.is_some() && pk.is_none() {
         op = Operation::QueryID {
             id: id.unwrap(),
-            limit: limit.unwrap_or(0) as usize,
-            skip: skip.unwrap_or(0) as usize,
+            limit: match limit {
+                Some(limit) => limit as usize,
+                None => usize::MAX,
+            },
+            skip: match skip {
+                Some(skip) => skip as usize,
+                None => usize::MAX,
+            },
             res: res_write,
         };
     } else if pk.is_some() && id.is_some() {
@@ -285,18 +298,24 @@ fn tx_get(
 
     let result = block_until_response(op, sender, res_read);
     match result {
-        Ok(txs) => {
-            match txs.len() {
-                0 => {
-                    return Err(Status {code: 401, reason: "No transaction found for the given information"});
-                },
-                _ => {
-                    let jt = JsonTransactions::from(txs);
-                    return Ok(jt.to_string());
-                }
+        Ok(txs) => match txs.len() {
+            0 => {
+                return Err(Status {
+                    code: 401,
+                    reason: "No transaction found for the given information",
+                });
+            }
+            _ => {
+                let jt = JsonTransactions::from(txs);
+                return Ok(jt.to_string());
             }
         },
-        Err(_) => return Err(Status {code: 401, reason: "The transaction was rejected"}),
+        Err(_) => {
+            return Err(Status {
+                code: 401,
+                reason: "The transaction was rejected",
+            })
+        }
     }
 }
 

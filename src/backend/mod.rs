@@ -17,10 +17,10 @@ use crate::rest::{
 use futures::future::Future;
 use futures::{channel::oneshot, executor::block_on};
 use operation::Operation;
+use rand::distributions::weighted::alias_method::Weight;
 use std::collections::VecDeque;
 use std::sync::mpsc;
 use std::thread;
-use rand::distributions::weighted::alias_method::Weight;
 
 // ========================================================================== //
 
@@ -93,7 +93,7 @@ impl Backend {
                         let txs: Vec<Transaction> = blocks
                             .iter()
                             .skip(skip)
-                            .take(if limit == 0 {usize::MAX} else {limit} )
+                            .take(limit)
                             .map(|b| b.get_data().clone())
                             .collect();
                         res.send(txs).expect("Failed to set \"QueryID\"result");
@@ -129,8 +129,7 @@ impl Backend {
                                 .expect("Failed to send");
                         } else {
                             self.enqueue_tx(transaction.clone());
-                            let packet = Packet::PostTx(transaction);
-                            network.broadcast(packet);
+                            network.broadcast(Packet::PostTx(transaction));
                             res.send(Ok(())).expect("Failed to send");
                         }
                     }
@@ -138,14 +137,14 @@ impl Backend {
             }
 
             // Step the mining process once
-            self.mine_step();
+            self.mine_step(&network);
 
             //std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
 
     /// Run one step of the mining process
-    fn mine_step(&mut self) {
+    fn mine_step(&mut self, network: &Network) {
         // Set currently mined block
         if self.txs.len() > 0 && self.mined.is_none() {
             let tx = self.txs.pop_front().unwrap();
@@ -166,7 +165,10 @@ impl Backend {
             // Add block to blockchain and broadcast it
             let block = self.mined.take().expect("Mined cannot be 'None' here");
             println!("Successfully mined a block");
-            self.chain.push(block, false).expect("Failed to push block");
+            self.chain
+                .push(block.clone(), false)
+                .expect("Failed to push block");
+            network.broadcast(Packet::PostBlock(block));
         }
     }
 
