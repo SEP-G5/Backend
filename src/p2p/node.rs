@@ -3,10 +3,7 @@ use crate::p2p::{
     packet::{Packet, PacketCodec, PacketErr},
     shared::Shared,
 };
-use bincode;
 use futures::{SinkExt, Stream, StreamExt};
-use std::collections::HashMap;
-use std::error::Error;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;

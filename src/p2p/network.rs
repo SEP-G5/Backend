@@ -1,12 +1,9 @@
-use crate::p2p::packet::{Packet, PacketErr};
+use crate::p2p::packet::Packet;
 use crate::p2p::{node::Node, shared::Shared};
 use futures::executor::block_on;
-use std::error::Error;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync;
+use std::net::SocketAddr;
 use std::sync::Arc;
-use std::thread;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::sync::{mpsc, Mutex};
 
 pub type Tx = mpsc::Sender<(Packet, Option<SocketAddr>)>;
