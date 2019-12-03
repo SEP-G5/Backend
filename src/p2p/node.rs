@@ -57,7 +57,14 @@ impl Node {
                 // process messages from the remote node
                 Ok(PacketFrom::P2P(packet, addr)) => {
                     println!("packet from p2p");
-                    match self.state.lock().await.n2b_tx.send((packet, addr)).await {
+                    match self
+                        .state
+                        .lock()
+                        .await
+                        .n2b_tx
+                        .send((packet, Some(addr)))
+                        .await
+                    {
                         Ok(_) => (),
                         Err(_) => (),
                     }
