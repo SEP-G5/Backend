@@ -159,6 +159,8 @@ impl Backend {
                     did_mine = true;
                 }
             }
+        } else {
+            std::thread::sleep(std::time::Duration::from_millis(5));
         }
 
         if did_mine {
