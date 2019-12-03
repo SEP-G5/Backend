@@ -1,19 +1,16 @@
-use crate::p2p::packet::{Packet, PacketErr};
+use crate::p2p::packet::Packet;
 use crate::p2p::{node::Node, shared::Shared};
 use futures::executor::block_on;
-use std::error::Error;
 use std::net::SocketAddr;
-use std::sync;
 use std::sync::Arc;
-use std::thread;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::sync::{mpsc, Mutex};
 
-pub type Tx = mpsc::Sender<Packet>;
-pub type Rx = mpsc::Receiver<Packet>;
+pub type Tx = mpsc::Sender<(Packet, Option<SocketAddr>)>;
+pub type Rx = mpsc::Receiver<(Packet, Option<SocketAddr>)>;
 
-type StdRx = std::sync::mpsc::Receiver<Packet>;
-type StdTx = std::sync::mpsc::Sender<Packet>;
+type StdRx = std::sync::mpsc::Receiver<(Packet, Option<SocketAddr>)>;
+type StdTx = std::sync::mpsc::Sender<(Packet, Option<SocketAddr>)>;
 
 /// This is the gateway to the p2p network.
 pub struct Network {
@@ -39,9 +36,9 @@ impl Network {
     }
 
     /// Try recv on the network-to-backend channel.
-    pub fn try_recv(&mut self) -> Option<Packet> {
+    pub fn try_recv(&mut self) -> Option<(Packet, SocketAddr)> {
         match self.n2b_rx.try_recv() {
-            Ok(p) => Some(p),
+            Ok((p, a)) => Some((p, a.expect("SocketAddr must always be 'Some' here"))),
             Err(std::sync::mpsc::TryRecvError::Empty) => None,
             Err(_) => panic!("n2b_rx channel broken"),
         }
@@ -57,7 +54,22 @@ impl Network {
         let nodes = &mut self.state.lock().await.b2n_tx;
         for (addr, tx) in nodes.iter_mut() {
             println!("sending to {:?}", addr);
-            match tx.send(packet.clone()).await {
+            match tx.send((packet.clone(), None)).await {
+                Ok(_) => {}
+                Err(_) => println!("failed to send to node"),
+            }
+        }
+    }
+
+    pub fn unicast(&self, packet: Packet, addr: SocketAddr) {
+        block_on(self.unicast_internal(packet, addr));
+    }
+
+    pub async fn unicast_internal(&self, packet: Packet, addr: SocketAddr) {
+        println!("unicasting packet");
+        let nodes = &mut self.state.lock().await.b2n_tx;
+        if let Some(tx) = nodes.get_mut(&addr) {
+            match tx.send((packet.clone(), None)).await {
                 Ok(_) => {}
                 Err(_) => println!("failed to send to node"),
             }

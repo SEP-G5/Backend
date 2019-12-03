@@ -11,10 +11,22 @@ use tokio_util::codec::{Decoder, Encoder};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Packet {
+    /// Packet that is used to post a block after it has been mined. Anyone
+    /// receiving this packet should verify the block and then add it to it's
+    /// own blockchain.
     PostBlock(Block<Transaction>),
+    /// Packet that is used to ask for a block at the specified index in the
+    /// blockchain.
     GetBlock(u64),
-    PostPeers(),
+    /// Packet that is used to post a list of known peers to others in the
+    /// network. When this packet is received the peers should be added to those
+    /// that are known.
+    PostPeers,
+    /// Packet that is sent to ask for a list of known peers. Anyone receiving
+    /// this should respond with their known list of peers.
     GetPeers,
+    /// Packet that is sent when node has been notified of a new transaction
+    /// from the frontend.
     PostTx(Transaction),
 }
 

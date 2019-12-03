@@ -3,10 +3,7 @@ use crate::p2p::{
     packet::{Packet, PacketCodec, PacketErr},
     shared::Shared,
 };
-use bincode;
 use futures::{SinkExt, Stream, StreamExt};
-use std::collections::HashMap;
-use std::error::Error;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -16,7 +13,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio_util::codec::Framed;
 
 pub enum PacketFrom {
-    P2P(Packet),
+    P2P(Packet, SocketAddr),
     Backend(Packet),
 }
 
@@ -55,9 +52,16 @@ impl Node {
         while let Some(res) = self.next().await {
             match res {
                 // process messages from the remote node
-                Ok(PacketFrom::P2P(packet)) => {
+                Ok(PacketFrom::P2P(packet, addr)) => {
                     println!("packet from p2p");
-                    match self.state.lock().await.n2b_tx.send(packet).await {
+                    match self
+                        .state
+                        .lock()
+                        .await
+                        .n2b_tx
+                        .send((packet, Some(addr)))
+                        .await
+                    {
                         Ok(_) => (),
                         Err(_) => (),
                     }
@@ -91,14 +95,14 @@ impl Stream for Node {
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // poll backend-to-nextwork channel
-        if let Poll::Ready(Some(packet)) = self.b2n_rx.poll_next_unpin(cx) {
+        if let Poll::Ready(Some((packet, _))) = self.b2n_rx.poll_next_unpin(cx) {
             return Poll::Ready(Some(Ok(PacketFrom::Backend(packet))));
         }
 
         // poll network stream
         let res: Option<_> = futures::ready!(self.packets.poll_next_unpin(cx));
         Poll::Ready(match res {
-            Some(Ok(packet)) => Some(Ok(PacketFrom::P2P(packet))),
+            Some(Ok(packet)) => Some(Ok(PacketFrom::P2P(packet, self.addr))),
             Some(Err(e)) => Some(Err(e)),
             None => None,
         })
