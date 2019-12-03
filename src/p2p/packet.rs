@@ -14,7 +14,7 @@ pub enum Packet {
     /// Packet that is used to post a block after it has been mined. Anyone
     /// receiving this packet should verify the block and then add it to it's
     /// own blockchain.
-    PostBlock(Block<Transaction>),
+    PostBlock(Option<Block<Transaction>>, u64),
     /// Packet that is used to ask for a block at the specified index in the
     /// blockchain.
     GetBlock(u64),
