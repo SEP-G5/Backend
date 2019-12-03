@@ -2,23 +2,13 @@ pub mod operation;
 
 // ========================================================================== //
 
-use crate::blockchain::{
-    self,
-    block::Block,
-    transaction::{PubKey, Transaction},
-    Chain, ChainErr,
-};
-use crate::p2p::network::{self, Network};
+use crate::blockchain::{self, block::Block, transaction::Transaction, Chain, ChainErr};
+use crate::p2p::network::Network;
 use crate::p2p::packet::Packet;
-use crate::rest::{
-    self,
-    server::{Peer, Peers},
-};
-use futures::future::Future;
-use futures::{channel::oneshot, executor::block_on};
+use crate::rest;
 use operation::Operation;
-use rand::distributions::weighted::alias_method::Weight;
 use std::collections::VecDeque;
+use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::thread;
 
@@ -26,6 +16,8 @@ use std::thread;
 
 // Number of mining iterations per main-loop iteration
 const MINE_ITER: u32 = 100;
+
+// 6664
 
 // ========================================================================== //
 
@@ -52,12 +44,11 @@ impl Backend {
     /// Create a backend object.
     ///
     pub fn new() -> Backend {
-        let mut backend = Backend {
+        Backend {
             chain: Chain::new(),
             txs: VecDeque::new(),
             mined: None,
-        };
-        backend
+        }
     }
 
     /// Run the backend.
@@ -75,8 +66,8 @@ impl Backend {
         // Wait on messages
         loop {
             let res = network.try_recv();
-            if let Some(_op) = res {
-                println!("got msg from p2p network");
+            if let Some((packet, addr)) = res {
+                self.handle_packet(&network, packet, addr);
             }
 
             // Handle messages from REST server
@@ -159,6 +150,8 @@ impl Backend {
                     did_mine = true;
                 }
             }
+        } else {
+            std::thread::sleep(std::time::Duration::from_millis(5));
         }
 
         if did_mine {
@@ -175,5 +168,57 @@ impl Backend {
     /// Enqueue a transaction by first checking if it's valid
     fn enqueue_tx(&mut self, transaction: Transaction) {
         self.txs.push_back(transaction);
+    }
+
+    /// Handle a packet that was received from the network
+    fn handle_packet(&mut self, network: &Network, packet: Packet, addr: SocketAddr) {
+        match packet {
+            Packet::PostBlock(block) => {
+                // Is this block valid to be placed in the blockchain?
+                if let Err(_) = self.chain.could_push(&block, false) {
+                    println!(
+                        "Received a block over the network that does not\
+                         fit in our blockchain. Are we missing something?"
+                    );
+                } else {
+                    // Are we currently mining a block with the same
+                    // transaction? In that case stop the mining and accept
+                    // this block instead (provided it's valid).
+                    if let Some(mined) = &self.mined {
+                        if mined.get_data().get_signature() == block.get_data().get_signature() {
+                            println!("Received a block that we ourselves are currently mining");
+                        }
+                    }
+
+                    // Where do we add this new block in the chain? Is the
+                    // location (using parent hash) actually valid.
+                    self.chain
+                        .push(block, false)
+                        .expect("Failed to push block even though a pre-check was done");
+                }
+            }
+            Packet::GetBlock(idx) => {
+                let longest_chain = self.chain.get_longest_chain();
+                if let Some(b) = longest_chain.get(idx as usize) {
+                    network.unicast(Packet::PostBlock((*b).clone()), addr);
+                } else {
+                    println!("Another node asked for a packet which we do not have");
+                }
+            }
+            Packet::PostPeers => {
+                // Update known peers
+            }
+            Packet::GetPeers => {
+                // Broadcast/Unicast list of peers
+            }
+            Packet::PostTx(transaction) => {
+                let block =
+                    Block::new(self.chain.get_last_block().calc_hash(), transaction.clone());
+                if let Ok(_) = self.chain.could_push(&block, true) {
+                    self.enqueue_tx(transaction.clone());
+                    network.broadcast(Packet::PostTx(transaction));
+                }
+            }
+        }
     }
 }
