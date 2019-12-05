@@ -106,8 +106,7 @@ impl Chain {
 
         // Add the "genesis" block
         chain.nodes.push(Node::new());
-        let (t, _) = Transaction::debug_make_register(format!("GENESIS_BIKE"));
-        let b = Block::new(hash::EMPTY_HASH, t);
+        let b = Block::new_genesis(Transaction::make_genesis().0);
         chain.nodes[0].add_block(b);
 
         chain

@@ -8,6 +8,7 @@ use crate::p2p::packet::Packet;
 use crate::p2p::peer_discovery::PeerDisc;
 use crate::rest;
 use operation::Operation;
+use rand::Rng;
 use std::{
     collections::VecDeque,
     net::SocketAddr,
@@ -133,6 +134,11 @@ impl Backend {
                             res.send(Ok(())).expect("Failed to send");
                         }
                     }
+                    Operation::DebugDumpGraph => {
+                        let mut rng = rand::thread_rng();
+                        let num: u64 = rng.gen();
+                        self.chain.write_dot(&format!("chain_graph_{}", num));
+                    }
                 }
             }
 
@@ -192,10 +198,12 @@ impl Backend {
             Packet::PostBlock(block, idx) => {
                 if let Some(block) = block {
                     // Is this block valid to be placed in the blockchain?
-                    if let Err(_) = self.chain.could_push(&block, false) {
+                    if let Err(e) = self.chain.could_push(&block, false) {
                         println!(
                             "Received a block over the network that does not\
-                             fit in our blockchain. Are we missing something?"
+                             fit in our blockchain. Are we missing something?\
+                             (e: {:?})",
+                            e
                         );
                         panic!("Handle this by requesting the blocks from other nodes")
                     } else {
@@ -205,7 +213,8 @@ impl Backend {
                         if let Some(mined) = &self.mined {
                             if mined.get_data().get_signature() == block.get_data().get_signature()
                             {
-                                println!("Received a block that we ourselves are currently mining");
+                                //println!("Received a block that we ourselves are currently mining");
+                                self.mined = None;
                             }
                         }
 
