@@ -69,9 +69,15 @@ impl Node {
                 // process messages from backend
                 Ok(PacketFrom::Backend(packet)) => {
                     println!("packet from backend");
-                    match self.packets.send(packet).await {
-                        Ok(_) => (),
-                        Err(e) => println!("failed to send to node [{:?}]", e),
+                    match packet {
+                        Packet::CloseConnection() => {
+                            println!("node {} got CloseConnection packet", self.addr);
+                            break;
+                        }
+                        packet => match self.packets.send(packet).await {
+                            Ok(_) => (),
+                            Err(e) => println!("failed to send to node [{:?}]", e),
+                        },
                     }
                 }
                 Err(e) => {

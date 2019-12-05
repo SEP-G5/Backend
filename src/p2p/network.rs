@@ -3,7 +3,7 @@ use crate::p2p::{node::Node, shared::Shared};
 use futures::executor::block_on;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
 
 pub type Tx = mpsc::Sender<(Packet, Option<SocketAddr>)>;
@@ -22,7 +22,7 @@ pub struct Network {
 impl Network {
     /// Create a new network object, and do setup
     /// @retval Rx The network-to-backend receive channel
-    pub fn new() -> Network {
+    pub fn new(addr: String) -> Network {
         let (tx, rx) = mpsc::channel(1337);
         let (stdtx, stdrx) = std::sync::mpsc::channel();
         let shared = Shared::new(tx);
@@ -31,7 +31,8 @@ impl Network {
             n2b_rx: stdrx,
         };
 
-        block_on(network.run(rx, stdtx));
+        println!("Launching p2p server on {}.", addr);
+        block_on(network.run(addr, rx, stdtx));
         network
     }
 
@@ -49,7 +50,7 @@ impl Network {
     }
 
     /// Attempt to broadcast the packet to all connected nodes.
-    pub async fn broadcast_internal(&self, packet: Packet) {
+    async fn broadcast_internal(&self, packet: Packet) {
         println!("broadcasting packet");
         let nodes = &mut self.state.lock().await.b2n_tx;
         for (addr, tx) in nodes.iter_mut() {
@@ -61,11 +62,11 @@ impl Network {
         }
     }
 
-    pub fn unicast(&self, packet: Packet, addr: SocketAddr) {
+    pub fn unicast(&self, packet: Packet, addr: &SocketAddr) {
         block_on(self.unicast_internal(packet, addr));
     }
 
-    pub async fn unicast_internal(&self, packet: Packet, addr: SocketAddr) {
+    pub async fn unicast_internal(&self, packet: Packet, addr: &SocketAddr) {
         println!("unicasting packet");
         let nodes = &mut self.state.lock().await.b2n_tx;
         if let Some(tx) = nodes.get_mut(&addr) {
@@ -76,10 +77,38 @@ impl Network {
         }
     }
 
-    async fn run(&self, mut rx: Rx, stdtx: StdTx) {
-        let addr = "0.0.0.0:35010"
+    /// Disconnect the given node, close the connection.
+    pub fn close_node_from_addr(&self, node_addr: &SocketAddr) {
+        self.unicast(Packet::CloseConnection(), node_addr);
+    }
+
+    /// Take an open connection and run it as a node.
+    /// @param stream An open connection, ready to be a node.
+    pub fn add_node_from_stream(&self, stream: TcpStream) {
+        let state = self.state.clone();
+        tokio::spawn(async move {
+            let mut node = Node::new(stream, state).await;
+            node.run().await;
+        });
+    }
+
+    /// From a socket address, connect to it and run as a node.
+    pub async fn add_node_from_addr(&self, node_addr: &SocketAddr) -> Result<(), ()> {
+        let stream: TcpStream = match TcpStream::connect(node_addr).await {
+            Ok(s) => s,
+            Err(_) => return Err(()),
+        };
+
+        let state = self.state.clone();
+        self.add_node_from_stream(stream);
+
+        Ok(())
+    }
+
+    async fn run(&self, addr: String, mut rx: Rx, stdtx: StdTx) {
+        let addr = addr
             .parse::<SocketAddr>()
-            .expect("failed to parse nettwork address");
+            .expect("failed to parse network address");
         let mut listener = TcpListener::bind(&addr).await.expect("failed to bind");
 
         tokio::spawn(async move {

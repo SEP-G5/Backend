@@ -10,6 +10,7 @@ use crate::blockchain::{
 };
 use crate::p2p::network::{self, Network};
 use crate::p2p::packet::Packet;
+use crate::p2p::peer_discovery::PeerDisc;
 use crate::rest::{
     self,
     server::{Peer, Peers},
@@ -62,7 +63,7 @@ impl Backend {
 
     /// Run the backend.
     ///
-    pub fn run(&mut self) {
+    pub fn run(&mut self, net_addr: String) {
         // Launch REST server
         let (rest_send, rest_recv) = mpsc::channel();
         thread::spawn(move || {
@@ -70,10 +71,14 @@ impl Backend {
         });
 
         // Launch P2P communicator
-        let mut network = Network::new();
+        let mut network = Network::new(net_addr);
+
+        let mut peer_disc = PeerDisc::new();
 
         // Wait on messages
         loop {
+            peer_disc.poll(&network);
+
             let res = network.try_recv();
             if let Some(_op) = res {
                 println!("got msg from p2p network");
@@ -114,9 +119,9 @@ impl Backend {
                         res.send(txs).expect("Failed to set \"QueryID\"result");
                     }
                     Operation::QueryPeers { res: _ } => {
-                        println!("query peers");
-                        let packet = Packet::GetPeers;
-                        network.broadcast(packet);
+                        println!("query peers TODO");
+                        //let packet = Packet::GetPeers;
+                        //network.broadcast(packet);
                     }
                     Operation::CreateTransaction { transaction, res } => {
                         // Would the transaction be valid
