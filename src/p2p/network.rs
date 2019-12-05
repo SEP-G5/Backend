@@ -22,6 +22,7 @@ pub struct Network {
     state: Arc<Mutex<Shared>>,
     //n2b_rx: Rx,
     n2b_rx: StdRx,
+    addr: SocketAddr,
 }
 
 impl Network {
@@ -34,11 +35,25 @@ impl Network {
         let network = Network {
             state: Arc::new(Mutex::new(shared)),
             n2b_rx: stdrx,
+            addr: addr
+                .parse::<SocketAddr>()
+                .expect("failed to parse network address"),
         };
 
         println!("Launching p2p server on {}.", addr);
-        block_on(network.run(addr, rx, stdtx));
+        block_on(network.run(rx, stdtx));
         network
+    }
+
+    pub fn get_addr(&self) -> &SocketAddr {
+        &self.addr
+    }
+
+    pub fn is_my_addr(&self, other: &SocketAddr) -> bool {
+        let localaddr: SocketAddr = format!("127.0.0.1:{}", self.get_addr().port())
+            .parse::<SocketAddr>()
+            .expect("failed to parse network address");
+        *other == self.addr || *other == localaddr
     }
 
     /// Try recv on the network-to-backend channel.
@@ -71,8 +86,11 @@ impl Network {
         block_on(self.unicast_internal(packet, addr))
     }
 
-    pub async fn unicast_internal(&self, packet: Packet, addr: &SocketAddr) -> Result<(), NetError> {
-
+    pub async fn unicast_internal(
+        &self,
+        packet: Packet,
+        addr: &SocketAddr,
+    ) -> Result<(), NetError> {
         println!("unicasting packet");
         let nodes = &mut self.state.lock().await.b2n_tx;
         if let Some(tx) = nodes.get_mut(&addr) {
@@ -137,11 +155,8 @@ impl Network {
         Ok(())
     }
 
-    async fn run(&self, addr: String, mut rx: Rx, stdtx: StdTx) {
-        let addr = addr
-            .parse::<SocketAddr>()
-            .expect("failed to parse network address");
-        let mut listener = TcpListener::bind(&addr).await.expect("failed to bind");
+    async fn run(&self, mut rx: Rx, stdtx: StdTx) {
+        let mut listener = TcpListener::bind(&self.addr).await.expect("failed to bind");
 
         tokio::spawn(async move {
             loop {

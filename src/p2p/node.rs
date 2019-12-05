@@ -47,7 +47,14 @@ impl Node {
     /// Will be run for the entire lifetime of the node. When this extits
     /// the connection is closed.
     pub async fn run(&mut self) {
-        println!("new node connected on [{:?}]", self.get_addr());
+        {
+            let state = &mut self.state.lock().await;
+            println!(
+                "new node connected on [{:?}], {} active nodes",
+                self.get_addr(),
+                state.b2n_tx.len()
+            );
+        }
 
         while let Some(res) = self.next().await {
             match res {
@@ -91,8 +98,15 @@ impl Node {
         }
 
         // this node disconnected
-        println!("node [{:?}] disconnected", self.get_addr());
-        self.state.lock().await.b2n_tx.remove(&self.addr);
+        {
+            let state = &mut self.state.lock().await;
+            println!(
+                "node [{:?}] disconnected, {} remaining",
+                self.get_addr(),
+                state.b2n_tx.len()
+            );
+            state.b2n_tx.remove(&self.addr);
+        }
     }
 }
 

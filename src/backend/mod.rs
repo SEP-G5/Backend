@@ -181,8 +181,13 @@ impl Backend {
     }
 
     /// Handle a packet that was received from the network
-    fn handle_packet(&mut self, network: &Network, peer_disc: &mut PeerDisc,
-                     packet: Packet, addr: SocketAddr) {
+    fn handle_packet(
+        &mut self,
+        network: &Network,
+        peer_disc: &mut PeerDisc,
+        packet: Packet,
+        addr: SocketAddr,
+    ) {
         match packet {
             Packet::PostBlock(block, idx) => {
                 if let Some(block) = block {
@@ -234,9 +239,7 @@ impl Backend {
                     println!("Another node asked for a packet which we do not have");
                 }
             }
-            Packet::PeerShuffleReq(peers) => {
-                peer_disc.on_peer_shuffle_req(network, peers, addr)
-            }
+            Packet::PeerShuffleReq(peers) => peer_disc.on_peer_shuffle_req(network, peers, addr),
             Packet::PeerShuffleResp(o_peers) => {
                 peer_disc.on_peer_shuffle_resp(network, o_peers, addr);
             }
