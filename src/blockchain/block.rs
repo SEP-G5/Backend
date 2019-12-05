@@ -49,10 +49,10 @@ impl<T: Hashable> Block<T> {
     /// Create a block from a parent block. The hash for the parent block is
     /// calculated before the children is created.
     ///
-    pub fn from_parent(parent: &Block<T>, data: T) -> Block<T> {
-        let parent_hash = parent.calc_hash();
-        Block::new(parent_hash, data)
-    }
+    //pub fn from_parent(parent: &Block<T>, data: T) -> Block<T> {
+    //    let parent_hash = parent.calc_hash();
+    //    Block::new(parent_hash, data)
+    //}
 
     /// Returns the hash of the parent block
     ///
@@ -62,6 +62,7 @@ impl<T: Hashable> Block<T> {
 
     /// Returns the timestamp when the block was created. In UNIX epoch
     ///
+    #[cfg(test)]
     pub fn get_timestamp(&self) -> u64 {
         self.timestamp
     }

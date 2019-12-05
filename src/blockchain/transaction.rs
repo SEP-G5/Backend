@@ -85,6 +85,7 @@ impl Transaction {
 
     /// @param t_prev The previous transaction
     /// @param t_sk The previous secret key
+    #[cfg(test)]
     pub fn debug_make_transfer(
         t_prev: &Transaction,
         sk_prev: &SecretKey,
@@ -112,6 +113,7 @@ impl Transaction {
     /// Verify that this transaction is a valid next transaction, given that the
     /// previous transaction was "prev_t".
     /// @pre "prev_t" must be a valid transaction.
+    #[cfg(test)]
     pub fn verify_is_next(&self, prev_t: &Transaction) -> bool {
         match self.verify() {
             Ok(_) => match &self.pub_key_input {

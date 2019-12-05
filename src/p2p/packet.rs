@@ -2,7 +2,6 @@ use crate::blockchain::{block::Block, transaction::Transaction};
 use bytes::buf::BufMut;
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use std::fmt;
 use std::io;
 use tokio_util::codec::{Decoder, Encoder};

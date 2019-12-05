@@ -14,11 +14,13 @@ use transaction::{PubKey, Transaction};
 // ========================================================================== //
 
 // Transactions relation color (for debug graph)
+/*
 const DOT_REL_COLOR: &str = "#0145ac";
 const DOT_BG_COLOR: &str = "#1b212c";
 const DOT_BORDER_COLOR: &str = "#82c7a5";
 const DOT_FILL_COLOR: &str = "#ffffff";
 const DOT_SPEC_COLOR: &str = "#9e141b";
+*/
 
 // Hash end pattern
 const HASH_END_PATTERN: &str = "000";
@@ -186,6 +188,7 @@ impl Chain {
     }
 
     /// Mine a block
+    #[cfg(test)]
     pub fn mine(&mut self, transaction: Transaction) -> BlockType {
         // Generate block
         let last_block = self.get_last_block();
@@ -246,11 +249,13 @@ impl Chain {
     /// Returns the total number of blocks in the chain. This is not the longest
     /// part of the chain but rather the total number including any diverging
     /// blocks.
+    #[cfg(test)]
     pub fn block_count(&self) -> usize {
         self.nodes.iter().map(|n| n.get_blocks().len()).sum()
     }
 
     /// Returns the first (genesis) block in the blockchain.
+    #[cfg(test)]
     pub fn get_genesis_block(&self) -> &BlockType {
         &self.nodes[0].get_blocks()[0]
     }
@@ -295,6 +300,7 @@ impl Chain {
     ///
     /// This graph can then be visualized with graphviz.
     ///
+    #[allow(dead_code)]
     pub fn write_dot(&self, path: &str) -> io::Result<()> {
         self.write_dot_id(path, "")
     }
@@ -305,7 +311,9 @@ impl Chain {
     ///
     /// This graph can then be visualized with graphviz.
     ///
+    #[allow(dead_code)]
     pub fn write_dot_id(&self, path: &str, id: &str) -> io::Result<()> {
+        /*
         let mut dot = format!(
             "digraph Blockchain {{\n\
              \tgraph [bgcolor=\"{}\" penwidth=5.0]\n\
@@ -313,6 +321,8 @@ impl Chain {
              \tedge [color=\"{}\" penwidth=5.0]\n",
             DOT_BG_COLOR, DOT_SPEC_COLOR, DOT_FILL_COLOR, DOT_FILL_COLOR
         );
+        */
+        let mut dot = format!("digraph Blockchain {{\n");
 
         for (i, node) in self.nodes.iter().enumerate() {
             for blk in node.get_blocks().iter() {
@@ -323,11 +333,11 @@ impl Chain {
 
                 // Block itself
                 let color = if !id.is_empty() && blk.get_data().get_id() == id {
-                    DOT_SPEC_COLOR
+                    "#ff0000" // DOT_SPEC_COLOR
                 } else if tx_paren.is_none() {
-                    DOT_REL_COLOR
+                    "#0000ff" // DOT_REL_COLOR
                 } else {
-                    DOT_BORDER_COLOR
+                    "#000000" // DOT_BORDER_COLOR
                 };
 
                 dot.push_str(&format!(
@@ -353,7 +363,7 @@ impl Chain {
                     let hash_str_p = hash::hash_to_str(&blk_p.calc_hash());
                     dot.push_str(&format!(
                         "\t\"{}\" -> \"{}\" [color=\"{}\", style=dotted];\n",
-                        hash_str_p, hash_str, DOT_REL_COLOR
+                        hash_str_p, hash_str, "#0000ff" /*DOT_REL_COLOR*/
                     ));
                 }
             }
@@ -533,8 +543,6 @@ mod tests {
         chain
             .push(block_10, true)
             .expect("Chain::push failure (10)");
-
-        chain.write_dot("graph.out");
     }
 
     #[test]

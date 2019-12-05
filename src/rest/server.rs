@@ -217,7 +217,7 @@ fn tx_post(data: String, sender: State<Mutex<mpsc::Sender<Operation>>>) -> Strin
         Err(e) => return make_response(false, &format!("{}", e)),
     }
 
-    let (res_write, mut res_read) = oneshot::channel();
+    let (res_write, res_read) = oneshot::channel();
     let op = Operation::CreateTransaction {
         transaction: t,
         res: res_write,

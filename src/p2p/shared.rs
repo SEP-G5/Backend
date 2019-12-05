@@ -1,5 +1,4 @@
 use crate::p2p::network::Tx;
-use crate::p2p::packet::Packet;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 //use tokiotask::Task;
