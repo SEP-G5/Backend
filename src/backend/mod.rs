@@ -20,8 +20,6 @@ use std::{
 // Number of mining iterations per main-loop iteration
 const MINE_ITER: u32 = 100;
 
-// 6664
-
 // ========================================================================== //
 
 #[derive(Debug)]
@@ -222,7 +220,10 @@ impl Backend {
                 let longest_chain = self.chain.get_longest_chain();
                 if let Some(t_blk) = longest_chain.get(idx as usize) {
                     let blk = Some((*t_blk).clone());
-                    network.unicast(Packet::PostBlock(blk, idx), addr);
+                    match network.unicast(Packet::PostBlock(blk, idx), addr) {
+                        Ok(_) => {}
+                        Err(_) => eprintln!("Error while unicasting packet to '{}'", addr),
+                    }
                 } else {
                     println!("Another node asked for a packet which we do not have");
                 }
@@ -324,7 +325,12 @@ impl Backend {
                                 }
                             }
                             Packet::GetBlock(idx) => {
-                                network.unicast(Packet::PostBlock(None, idx), addr);
+                                match network.unicast(Packet::PostBlock(None, idx), addr) {
+                                    Ok(_) => {}
+                                    Err(_) => {
+                                        eprintln!("Error while unicasting packet to '{}'", addr)
+                                    }
+                                }
                             }
                             _ => {}
                         }
