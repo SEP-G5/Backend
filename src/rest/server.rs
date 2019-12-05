@@ -6,9 +6,7 @@ use futures::channel::oneshot;
 use rocket::{self, http::Status, *};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
-use std::sync::mpsc;
-use std::sync::Mutex;
-use std::usize;
+use std::{io::Read, sync::mpsc, sync::Mutex, usize};
 
 // ============================================================ //
 
@@ -201,7 +199,11 @@ fn index() -> &'static str {
 /// The client wants to create a new transaction.
 /// @param data Contains the transaction that was created by the client
 #[post("/transaction", format = "json", data = "<data>")]
-fn tx_post(data: String, sender: State<Mutex<mpsc::Sender<Operation>>>) -> String {
+fn tx_post(data: Data, sender: State<Mutex<mpsc::Sender<Operation>>>) -> String {
+    let mut data_stream = data.open();
+    let mut data = String::new();
+    data_stream.read_to_string(&mut data);
+
     let v: Value = match serde_json::from_str(data.as_str()) {
         Ok(v) => v,
         Err(e) => return make_response(false, &format!("{}", e)),
