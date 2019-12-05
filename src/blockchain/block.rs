@@ -46,6 +46,17 @@ impl<T: Hashable> Block<T> {
         }
     }
 
+    /// Creates a new genesis block
+    pub fn new_genesis(data: T) -> Block<T> {
+        Block {
+            parent: hash::EMPTY_HASH,
+            timestamp: 0,
+            rand_nonce: 0,
+            nonce: 0,
+            data,
+        }
+    }
+
     /// Create a block from a parent block. The hash for the parent block is
     /// calculated before the children is created.
     ///
