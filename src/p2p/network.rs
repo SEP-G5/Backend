@@ -12,6 +12,11 @@ pub type Rx = mpsc::Receiver<(Packet, Option<SocketAddr>)>;
 type StdRx = std::sync::mpsc::Receiver<(Packet, Option<SocketAddr>)>;
 type StdTx = std::sync::mpsc::Sender<(Packet, Option<SocketAddr>)>;
 
+pub enum NetError {
+    NodeNotFound,
+    Disconnected,
+}
+
 /// This is the gateway to the p2p network.
 pub struct Network {
     state: Arc<Mutex<Shared>>,
@@ -62,18 +67,45 @@ impl Network {
         }
     }
 
-    pub fn unicast(&self, packet: Packet, addr: &SocketAddr) {
-        block_on(self.unicast_internal(packet, addr));
+    pub fn unicast(&self, packet: Packet, addr: &SocketAddr) -> Result<(), NetError> {
+        block_on(self.unicast_internal(packet, addr))
     }
 
-    pub async fn unicast_internal(&self, packet: Packet, addr: &SocketAddr) {
+    pub async fn unicast_internal(&self, packet: Packet, addr: &SocketAddr) -> Result<(), NetError> {
+
         println!("unicasting packet");
         let nodes = &mut self.state.lock().await.b2n_tx;
         if let Some(tx) = nodes.get_mut(&addr) {
             match tx.send((packet.clone(), None)).await {
-                Ok(_) => {}
-                Err(_) => println!("failed to send to node"),
+                Ok(_) => return Ok(()),
+                Err(_) => return Err(NetError::Disconnected),
             }
+        } else {
+            return Err(NetError::NodeNotFound);
+        }
+    }
+
+    /// Returns the current number of nodes that is one is connected to.
+    pub fn node_count(&self) -> usize {
+        block_on(self.node_count_internal())
+    }
+
+    pub async fn node_count_internal(&self) -> usize {
+        let nodes = &mut self.state.lock().await.b2n_tx;
+        nodes.len()
+    }
+
+    /// Returns the address of the node at the specified index. None if there is
+    /// no node that matches the index.
+    pub fn get_node(&self, index: usize) -> Option<SocketAddr> {
+        block_on(self.get_node_internal(index))
+    }
+
+    pub async fn get_node_internal(&self, index: usize) -> Option<SocketAddr> {
+        let nodes = &mut self.state.lock().await.b2n_tx;
+        match nodes.iter_mut().nth(index) {
+            Some((k, _)) => Some(*k),
+            None => None,
         }
     }
 

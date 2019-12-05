@@ -14,7 +14,11 @@ use transaction::{PubKey, Transaction};
 // ========================================================================== //
 
 // Transactions relation color (for debug graph)
-const TX_RELATION_COLOR: &str = "blue";
+const DOT_REL_COLOR: &str = "#0145ac";
+const DOT_BG_COLOR: &str = "#1b212c";
+const DOT_BORDER_COLOR: &str = "#82c7a5";
+const DOT_FILL_COLOR: &str = "#ffffff";
+const DOT_SPEC_COLOR: &str = "#9e141b";
 
 // Hash end pattern
 const HASH_END_PATTERN: &str = "000";
@@ -110,7 +114,7 @@ impl Chain {
     }
 
     /// Push a new block at the end of the blockchain
-    pub fn push(&mut self, block: BlockType, ignore_hash: bool) -> Result<(), ChainErr> {
+    pub fn push(&mut self, block: BlockType, ignore_hash: bool) -> Result<u64, ChainErr> {
         self.could_push(&block, ignore_hash)?;
 
         // Find parent index
@@ -125,7 +129,7 @@ impl Chain {
         }
         self.nodes[parent_index + 1].add_block(block);
 
-        Ok(())
+        Ok((parent_index + 1) as u64)
     }
 
     /// Test whether a block could be pushed.
@@ -302,7 +306,13 @@ impl Chain {
     /// This graph can then be visualized with graphviz.
     ///
     pub fn write_dot_id(&self, path: &str, id: &str) -> io::Result<()> {
-        let mut dot = format!("digraph Blockchain {{\n");
+        let mut dot = format!(
+            "digraph Blockchain {{\n\
+             \tgraph [bgcolor=\"{}\" penwidth=5.0]\n\
+             \tnode [color=\"{}\" fillcolor=\"{}\" style=filled penwidth=5.0]\n\
+             \tedge [color=\"{}\" penwidth=5.0]\n",
+            DOT_BG_COLOR, DOT_SPEC_COLOR, DOT_FILL_COLOR, DOT_FILL_COLOR
+        );
 
         for (i, node) in self.nodes.iter().enumerate() {
             for blk in node.get_blocks().iter() {
@@ -313,15 +323,15 @@ impl Chain {
 
                 // Block itself
                 let color = if !id.is_empty() && blk.get_data().get_id() == id {
-                    "red"
+                    DOT_SPEC_COLOR
                 } else if tx_paren.is_none() {
-                    TX_RELATION_COLOR
+                    DOT_REL_COLOR
                 } else {
-                    "black"
+                    DOT_BORDER_COLOR
                 };
 
                 dot.push_str(&format!(
-                    "\t\"{}\"[label=\"{}...\\nID: {}\", shape=box, color={}];\n",
+                    "\t\"{}\"[label=\"{}...\\nID: {}\", shape=box, color=\"{}\"];\n",
                     hash_str,
                     &hash_str[0..6],
                     blk.get_data().get_id(),
@@ -342,8 +352,8 @@ impl Chain {
                 if let Some(blk_p) = tx_paren {
                     let hash_str_p = hash::hash_to_str(&blk_p.calc_hash());
                     dot.push_str(&format!(
-                        "\t\"{}\" -> \"{}\" [color={}, style=dotted];\n",
-                        hash_str_p, hash_str, TX_RELATION_COLOR
+                        "\t\"{}\" -> \"{}\" [color=\"{}\", style=dotted];\n",
+                        hash_str_p, hash_str, DOT_REL_COLOR
                     ));
                 }
             }
@@ -485,11 +495,11 @@ mod tests {
         let mut chain = Chain::new();
 
         // Transactions
-        let (t0, t0_s) = Transaction::debug_make_register(format!("SN1337BIKE"));
+        let (t0, t0_s) = Transaction::debug_make_register(format!("FIRST_BIKE"));
         let (t1, t1_s) = Transaction::debug_make_transfer(&t0, &t0_s);
-        let (t2, t2_s) = Transaction::debug_make_register(format!("MYCOOLBIKE"));
+        let (t2, t2_s) = Transaction::debug_make_register(format!("SECOND_BIKE"));
         let (t3, t3_s) = Transaction::debug_make_transfer(&t2, &t2_s);
-        let (t4, t4_s) = Transaction::debug_make_register(format!("WOW_BIKE_WOW"));
+        let (t4, t4_s) = Transaction::debug_make_register(format!("THIRD_BIKE"));
         let (t5, t5_s) = Transaction::debug_make_transfer(&t4, &t4_s);
         let (t6, t6_s) = Transaction::debug_make_transfer(&t1, &t1_s);
         let (t7, _) = Transaction::debug_make_transfer(&t5, &t5_s);
@@ -523,6 +533,8 @@ mod tests {
         chain
             .push(block_10, true)
             .expect("Chain::push failure (10)");
+
+        chain.write_dot("graph.out");
     }
 
     #[test]

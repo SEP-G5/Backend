@@ -57,24 +57,7 @@ impl PeerDisc {
         }
     }
 
-    /// Takes both PeerShuffle<Req/Resp>
-    pub fn on_peer_shuffle(&mut self, network: &Network, packet: Packet, from: SocketAddr) {
-        println!("[PeerDisc:on_peer_packet] from [{}]", from);
-        match packet {
-            Packet::PeerShuffleReq(peers) => {
-                self.on_peer_shuffle_req(network, peers, from);
-            }
-            Packet::PeerShuffleResp(peers) => {
-                self.on_peer_shuffle_resp(network, peers, from);
-            }
-            _ => panic!(
-                "on_peer_packet received a packet of wrong type: {:?}",
-                packet
-            ),
-        }
-    }
-
-    fn on_peer_shuffle_resp(
+    pub fn on_peer_shuffle_resp(
         &mut self,
         network: &Network,
         peers: Option<Vec<SocketAddr>>,
@@ -117,7 +100,7 @@ impl PeerDisc {
         }
     }
 
-    fn on_peer_shuffle_req(&mut self, network: &Network, peers: Vec<SocketAddr>, from: SocketAddr) {
+    pub fn on_peer_shuffle_req(&mut self, network: &Network, peers: Vec<SocketAddr>, from: SocketAddr) {
         let packet: Packet;
         if self.state == PeerDiscState::Wait {
             self.prepare_shuffle();
