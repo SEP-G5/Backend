@@ -49,6 +49,10 @@ impl Network {
         &self.addr
     }
 
+    pub fn get_state(&self) -> &Arc<Mutex<Shared>> {
+        &self.state
+    }
+
     pub fn is_my_addr(&self, other: &SocketAddr) -> bool {
         let localaddr: SocketAddr = format!("127.0.0.1:{}", self.get_addr().port())
             .parse::<SocketAddr>()

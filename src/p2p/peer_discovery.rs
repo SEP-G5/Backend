@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum PeerDiscState {
     Init,
     Wait,
@@ -47,7 +47,7 @@ pub struct PeerDisc {
 impl PeerDisc {
     pub fn new() -> PeerDisc {
         PeerDisc {
-            state: PeerDiscState::Wait,
+            state: PeerDiscState::Init,
             neighbor_nodes: Vec::new(),
             pending_resp: HashMap::new(),
             shuffle_nodes: Vec::new(),
@@ -66,13 +66,30 @@ impl PeerDisc {
     ) {
         println!("[PeerDisc:on_peer_shuffle_resp] got resp");
 
-        if let expecting_resp = self.shuffle_node.is_some() {
-            if let correct_from_addr = self.shuffle_node.unwrap() == from {
+        let expecting_resp = self.shuffle_node.is_some();
+        if expecting_resp {
+
+            let correct_from_addr = self.shuffle_node.unwrap() == from;
+            if correct_from_addr {
                 self.pending_resp.remove(&from);
 
-                if let req_accepted = peers.is_some() {
-                    if let has_peers = peers.is_some() {
-                        let peers = peers.unwrap();
+                let req_accepted = peers.is_some();
+                if req_accepted {
+
+                    let has_peers = peers.is_some();
+                    if has_peers {
+                        let mut peers = peers.unwrap();
+                        let hmap = block_on(network.get_state().lock());
+                        let hmap = &hmap.b2n_tx;
+                        peers.retain(|addr| {
+                            !network.is_my_addr(addr) &&
+                                hmap
+                                .keys()
+                                .filter(|haddr| *haddr != addr)
+                                .collect::<Vec<&SocketAddr>>()
+                                .len() == 0
+                        });
+
                         peers.iter().for_each(|addr| {
                             if network.is_my_addr(&addr) {
                                 return;
@@ -94,9 +111,15 @@ impl PeerDisc {
                     self.shuffle_nodes.clear();
                     self.timer = Instant::now();
                 } else {
-                    // shuffle req was denied, try someone else
+                    // shuffle req was denied, if there are others, try
+                    // with them
                     self.shuffle_node = None;
-                    self.state = PeerDiscState::Shuffle;
+                    println!("[PeerDisc:on_peer_shuffle_resp] shuffle req denied {:?}, {:?}", self.state, self.pending_resp);
+                    if self.neighbor_nodes.len() > 1 {
+                        self.state = PeerDiscState::Shuffle;
+                    } else {
+
+                    }
                 }
             } else {
                 println!(
