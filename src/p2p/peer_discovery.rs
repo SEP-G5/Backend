@@ -117,8 +117,6 @@ impl PeerDisc {
                     println!("[PeerDisc:on_peer_shuffle_resp] shuffle req denied {:?}, {:?}", self.state, self.pending_resp);
                     if self.neighbor_nodes.len() > 1 {
                         self.state = PeerDiscState::Shuffle;
-                    } else {
-
                     }
                 }
             } else {
@@ -132,6 +130,7 @@ impl PeerDisc {
         } else {
             println!("[PeerDisc:on_peer_shuffle_resp] got unexpected resp");
         }
+        self.print_neighbors();
     }
 
     /// In request we look at the data, and formulate a response.
@@ -154,12 +153,74 @@ impl PeerDisc {
         }
 
         network.unicast(packet, &from);
+        self.print_neighbors();
     }
 
-    // TODO may block for long periods of time because of state_init()
-    // which may block when connecting to nodes.
-    // Can also block on on_peer_shuffle_resp
+    fn print_nodes(nodes: &Vec<SocketAddr>) {
+        nodes.iter()
+            .for_each(|&addr| {
+                println!("\t{}", addr);
+            });
+    }
+
+    /// Network may drop and accepet new connections, independently of
+    /// the peer discovery algorithm. Keep our list of nodes up to date
+    /// with the networks.
+    fn update_neighbors(&mut self, network: &Network) {
+        let net_nodes: Vec<SocketAddr>;
+        {
+            let state = block_on(network.get_state().lock());
+            net_nodes = state.b2n_tx.keys().cloned().collect();
+        }
+
+        let node_dc = self.neighbor_nodes.len() > net_nodes.len();
+        let new_node = self.neighbor_nodes.len() < net_nodes.len();
+
+        if node_dc {
+            println!("\n[PeerDisc:update_neighbors] node dc");
+            Self::print_nodes(&self.neighbor_nodes);
+            println!("/|\\ peer disc,  \\|/ network");
+            Self::print_nodes(&net_nodes);
+            self.neighbor_nodes.retain(|&addr| {
+                net_nodes.iter().filter(|&net_addr| {
+                    addr == *net_addr
+                }).collect::<Vec<&SocketAddr>>().len() == 1
+            });
+            println!("---- After ----");
+            Self::print_nodes(&self.neighbor_nodes);
+            println!("/|\\ peer disc,  \\|/ network");
+            Self::print_nodes(&net_nodes);
+            println!("");
+        } else if new_node {
+            println!("\n[PeerDisc:update_neighbors] new node");
+            Self::print_nodes(&self.neighbor_nodes);
+            println!("/|\\ peer disc,  \\|/ network");
+            Self::print_nodes(&net_nodes);
+            // find missing node, and add to our nodes
+            net_nodes.iter()
+                .for_each(|&net_addr| {
+                    let o_addr = self.neighbor_nodes.iter().find(|&addr| {
+                        *addr == net_addr
+                    });
+                    if o_addr.is_none() {
+                        self.neighbor_nodes.push(net_addr.clone());
+                    }
+                });
+            println!("---- After ----");
+            Self::print_nodes(&self.neighbor_nodes);
+            println!("/|\\ peer disc,  \\|/ network");
+            Self::print_nodes(&net_nodes);
+            println!("");
+        } else {
+            // check that we have the same nodes
+
+        }
+    }
+
+    // TODO may block for long periods of time
     pub fn poll(&mut self, network: &Network) {
+        self.update_neighbors(network);
+
         match self.state {
             PeerDiscState::Init => self.state_init(network),
             PeerDiscState::Wait => self.state_wait(network),
@@ -207,6 +268,8 @@ impl PeerDisc {
     /// Prepare the data required for a shuffle.
     /// self.shuffle_nodes will only be filled if it is cleared before calling.
     fn prepare_shuffle(&mut self, network: &Network) {
+        // TODO instead of just shuffleing random, take the age of the node
+        // into consideration.
         self.neighbor_nodes.shuffle(&mut rand::thread_rng());
 
         if self.shuffle_nodes.len() == 0 && self.neighbor_nodes.len() > 1 {
@@ -222,6 +285,7 @@ impl PeerDisc {
         }
 
         self.shuffle_node = Some(self.neighbor_nodes[0].clone());
+        self.print_neighbors();
     }
 
     fn state_shuffle(&mut self, network: &Network) {
@@ -236,7 +300,10 @@ impl PeerDisc {
 
         let packet = Packet::PeerShuffleReq(self.shuffle_nodes.clone());
         println!("[PeerDisc:state_shuffle] sending req");
-        network.unicast(packet, &self.shuffle_node.unwrap());
+        if let Err(e) = network.unicast(packet, &self.shuffle_node.unwrap()) {
+            // cannot talk to node, remove it and redo shuffle with someone else
+
+        }
         self.state = PeerDiscState::Wait;
         self.pending_resp
             .insert(self.shuffle_node.unwrap().clone(), Instant::now());
@@ -278,5 +345,14 @@ impl PeerDisc {
 
         self.state = PeerDiscState::Wait;
         self.timer = Instant::now();
+    }
+
+    fn print_neighbors(&self) {
+        println!("~#~ Neighbor nodes:");
+        self.neighbor_nodes
+            .iter()
+            .for_each(|addr| {
+                println!("\t{}", addr);
+            });
     }
 }

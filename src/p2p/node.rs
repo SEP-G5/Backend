@@ -97,13 +97,12 @@ impl Node {
             }
         }
 
-        // this node disconnected
         {
             let state = &mut self.state.lock().await;
             println!(
                 "node [{:?}] disconnected, {} remaining",
                 self.get_addr(),
-                state.b2n_tx.len()
+                state.b2n_tx.len() - 1
             );
             state.b2n_tx.remove(&self.addr);
         }
