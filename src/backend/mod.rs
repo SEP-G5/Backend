@@ -90,6 +90,7 @@ impl Backend {
                         skip,
                         res,
                     } => {
+
                         let blocks = self.chain.get_blocks_for_id(&id);
                         let txs: Vec<Transaction> = blocks
                             .iter()

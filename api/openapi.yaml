@@ -96,6 +96,22 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Transaction'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: |
+            Bad Request.
+            Missing attributes in the request.
+            Too many attributes given.
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: |
+            No Transaction found for the given info.
   /peer:
     get:
       summary: Get peers

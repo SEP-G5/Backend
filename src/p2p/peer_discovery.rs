@@ -68,14 +68,12 @@ impl PeerDisc {
 
         let expecting_resp = self.shuffle_node.is_some();
         if expecting_resp {
-
             let correct_from_addr = self.shuffle_node.unwrap() == from;
             if correct_from_addr {
                 self.pending_resp.remove(&from);
 
                 let req_accepted = peers.is_some();
                 if req_accepted {
-
                     let has_peers = peers.is_some();
                     if has_peers {
                         let peers: Vec<SocketAddr> = peers.unwrap();
@@ -89,7 +87,10 @@ impl PeerDisc {
                     // shuffle req was denied, if there are others, try
                     // with them
                     self.shuffle_node = None;
-                    println!("[PeerDisc:on_peer_shuffle_resp] shuffle req denied {:?}, {:?}", self.state, self.pending_resp);
+                    println!(
+                        "[PeerDisc:on_peer_shuffle_resp] shuffle req denied {:?}, {:?}",
+                        self.state, self.pending_resp
+                    );
                     if self.neighbor_nodes.len() > 1 {
                         self.state = PeerDiscState::Shuffle;
                     }
@@ -133,10 +134,9 @@ impl PeerDisc {
     }
 
     fn print_nodes(tag: &'static str, nodes: &Vec<SocketAddr>) {
-        nodes.iter()
-            .for_each(|&addr| {
-                println!("{}\t{}", tag, addr);
-            });
+        nodes.iter().for_each(|&addr| {
+            println!("{}\t{}", tag, addr);
+        });
     }
 
     /// Network may drop and accepet new connections, independently of
@@ -157,9 +157,12 @@ impl PeerDisc {
             //Self::print_nodes("disc", &self.neighbor_nodes);
             //Self::print_nodes("net", &net_nodes);
             self.neighbor_nodes.retain(|&addr| {
-                net_nodes.iter().filter(|&net_addr| {
-                    addr == *net_addr
-                }).collect::<Vec<&SocketAddr>>().len() == 1
+                net_nodes
+                    .iter()
+                    .filter(|&net_addr| addr == *net_addr)
+                    .collect::<Vec<&SocketAddr>>()
+                    .len()
+                    == 1
             });
             //println!("---- After ----");
             //Self::print_nodes("disc", &self.neighbor_nodes);
@@ -171,15 +174,12 @@ impl PeerDisc {
             //Self::print_nodes("disc", &self.neighbor_nodes);
             //Self::print_nodes("net", &net_nodes);
             // find missing node, and add to our nodes
-            net_nodes.iter()
-                .for_each(|&net_addr| {
-                    let o_addr = self.neighbor_nodes.iter().find(|&addr| {
-                        *addr == net_addr
-                    });
-                    if o_addr.is_none() {
-                        self.neighbor_nodes.push(net_addr.clone());
-                    }
-                });
+            net_nodes.iter().for_each(|&net_addr| {
+                let o_addr = self.neighbor_nodes.iter().find(|&addr| *addr == net_addr);
+                if o_addr.is_none() {
+                    self.neighbor_nodes.push(net_addr.clone());
+                }
+            });
 
             //println!("---- After ----");
             //Self::print_nodes("disc", &self.neighbor_nodes);
@@ -276,7 +276,6 @@ impl PeerDisc {
         println!("[PeerDisc:state_shuffle] sending req");
         if let Err(e) = network.unicast(packet, &self.shuffle_node.unwrap()) {
             // cannot talk to node, remove it and redo shuffle with someone else
-
         }
         self.state = PeerDiscState::Wait;
         self.pending_resp
@@ -323,11 +322,9 @@ impl PeerDisc {
 
     fn print_neighbors(&self) {
         println!("~#~ Neighbor nodes:");
-        self.neighbor_nodes
-            .iter()
-            .for_each(|addr| {
-                println!("\t{}", addr);
-            });
+        self.neighbor_nodes.iter().for_each(|addr| {
+            println!("\t{}", addr);
+        });
     }
 
     /// Take a set of addresses, (nodes), add them to our list of
@@ -337,9 +334,7 @@ impl PeerDisc {
             if network.is_my_addr(&n_addr) {
                 return;
             }
-            let o_addr = self.neighbor_nodes.iter().find(|&addr| {
-                *addr == n_addr
-            });
+            let o_addr = self.neighbor_nodes.iter().find(|&addr| *addr == n_addr);
             if o_addr.is_none() {
                 self.neighbor_nodes.push(n_addr.clone());
                 let fut = network.add_node_from_addr(&n_addr);
