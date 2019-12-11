@@ -8,14 +8,28 @@ mod rest;
 // ========================================================================== //
 
 use backend::Backend;
+use std::env;
 use std::error::Error;
 
 // ========================================================================== //
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // parse args
+    let args: Vec<String> = env::args().collect();
+
+    // Network address
+    //
+    // Command    Data
+    // -n         0.0.0.0:35010
+    let net_addr: String = if args.len() > 2 && args[1] == "-n" {
+        args[2].clone()
+    } else {
+        "0.0.0.0:35010".to_string()
+    };
+
     let mut backend = Backend::new();
-    backend.run();
+    backend.run(net_addr);
 
     Ok(())
     /*

@@ -5,6 +5,7 @@ use rust_sodium::crypto::sign::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
+use std::iter::repeat;
 
 pub type PubKey = Vec<u8>;
 pub type Signature = Vec<u8>;
@@ -98,6 +99,16 @@ impl Transaction {
             signature: Vec::new(),
         };
         t.sign(&sk_prev);
+        (t, sk)
+    }
+
+    pub fn make_genesis() -> (Transaction, SecretKey) {
+        let bytes: Vec<u8> = repeat(0).take(sign::SEEDBYTES).collect();
+        let seed = sign::Seed::from_slice(&bytes).expect("Failed to generate seed");
+        let (pk, sk) = sign::keypair_from_seed(&seed);
+        let mut t = Transaction::new(String::from("GENESIS"), None, pk.as_ref().to_vec());
+        t.timestamp = 0;
+        t.sign(&sk);
         (t, sk)
     }
 

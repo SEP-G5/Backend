@@ -13,7 +13,7 @@ use std::{io::Read, sync::mpsc, sync::Mutex, usize};
 /// main entry point for the REST server program
 pub fn run_server(sender: mpsc::Sender<Operation>) {
     rocket::ignite()
-        .mount("/", routes![index, tx_post, tx_get, peer])
+        .mount("/", routes![index, dump_graph, tx_post, tx_get, peer])
         .manage(Mutex::new(sender))
         .launch();
 }
@@ -194,6 +194,17 @@ fn block_until_response<T>(
 #[get("/")]
 fn index() -> &'static str {
     "https://github.com/SEP-G5/Backend/issues/4"
+}
+
+#[get("/dump_graph")]
+fn dump_graph(sender: State<Mutex<mpsc::Sender<Operation>>>) -> String {
+    let op = Operation::DebugDumpGraph;
+    sender
+        .lock()
+        .expect("Failed to lock state mutex")
+        .send(op)
+        .expect("Failed to send op");
+    String::from("")
 }
 
 /// The client wants to create a new transaction.

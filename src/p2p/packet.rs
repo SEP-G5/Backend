@@ -2,9 +2,9 @@ use crate::blockchain::{block::Block, transaction::Transaction};
 use bytes::buf::BufMut;
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use std::fmt;
 use std::io;
+use std::net::SocketAddr;
 use tokio_util::codec::{Decoder, Encoder};
 
 // ============================================================ //
@@ -14,20 +14,21 @@ pub enum Packet {
     /// Packet that is used to post a block after it has been mined. Anyone
     /// receiving this packet should verify the block and then add it to it's
     /// own blockchain.
-    PostBlock(Block<Transaction>),
+    PostBlock(Option<Block<Transaction>>, u64),
     /// Packet that is used to ask for a block at the specified index in the
     /// blockchain.
     GetBlock(u64),
-    /// Packet that is used to post a list of known peers to others in the
-    /// network. When this packet is received the peers should be added to those
-    /// that are known.
-    PostPeers,
-    /// Packet that is sent to ask for a list of known peers. Anyone receiving
-    /// this should respond with their known list of peers.
-    GetPeers,
+
+    PeerShuffleReq(Vec<SocketAddr>),
+
+    PeerShuffleResp(Option<Vec<SocketAddr>>),
+
     /// Packet that is sent when node has been notified of a new transaction
     /// from the frontend.
     PostTx(Transaction),
+
+    /// Used to send close connection request from backend to node.
+    CloseConnection(),
 }
 
 impl Packet {
@@ -43,6 +44,9 @@ impl Packet {
     }
 
     fn to_bytes_mut(&self, buf: &mut BytesMut) -> Option<PacketErr> {
+        // This outcommented code does serialization without an
+        // extra allocatino, however it did not work out of the box.
+        // Future work, use this method to serialize without allocation.
         /*
         let len = match bincode::serialized_size(self) {
             Ok(len) => len as usize,
