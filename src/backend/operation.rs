@@ -8,6 +8,7 @@ use futures::channel::oneshot::Sender;
 /// Enumeration of operations that can be sent from the REST server to the
 /// backend to handle specific events.
 ///
+#[derive(Debug)]
 pub enum Operation {
     /// Operation that queries the blockchain for transactions that match a
     /// specific ID. The 'limit' specifies the number of transactions to return
