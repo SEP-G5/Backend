@@ -281,7 +281,7 @@ impl Backend {
                 peer_disc.on_join_req(node_port, from, &network);
             }
             Packet::JoinFwd(node_addr) => {
-                peer_disc.on_join_fwd(node_addr, from);
+                peer_disc.on_join_fwd(node_addr, from, &network);
             }
             Packet::CloseConnection() => {
                 eprintln!("got Packet::CloseConnection from network on backend");

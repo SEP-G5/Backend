@@ -5,7 +5,6 @@ use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
-use std::{time, thread};
 
 #[derive(PartialEq, Debug)]
 enum PeerDiscState {
@@ -59,15 +58,28 @@ impl PeerDisc {
             from.ip()
         );
 
+        let mut joined_addr = from.clone();
+        joined_addr.set_port(port);
 
-
-        // neighbor.for_each(unicast(JoinFwd(addr)))
+        self.neighbor_nodes.iter().for_each(|addr| {
+            let packet = Packet::JoinFwd(joined_addr.clone());
+            if let Err(e) = network.unicast(packet, addr) {
+                //TODO close the connection on error?
+                println!("[PeerDisc:on_join_req] failed to unicast Packet::\
+                          JoinFwd to {:?} with error [{:?}]", addr, e);
+            }
+        });
     }
 
+    /// This is us, getting a recommendation to connect to @addr.
+    /// TODO this could be a source of attack, sending false addrs.
     /// @param addr The addr provided in the JoinFwd packet.
     /// @param from The addr we recieved the packet on.
-    pub fn on_join_fwd(&self, addr: SocketAddr, from: SocketAddr) {
-        println!("[PeerDisc:on_join_fwd]");
+    pub fn on_join_fwd(&mut self, addr: SocketAddr, from: SocketAddr,
+                       network: &Network) {
+        println!("[PeerDisc:on_join_fwd] addr: {}, from {}", addr, from);
+
+        self.connect_to_addr(addr, network);
     }
 
     /// In response we see the result of the request.
@@ -90,7 +102,7 @@ impl PeerDisc {
                     let has_peers = peers.is_some();
                     if has_peers {
                         let peers: Vec<SocketAddr> = peers.unwrap();
-                        self.connect_to_nodes(peers, network);
+                        self.connect_to_addrs(peers, network);
                     }
 
                     self.shuffle_node = None;
@@ -136,7 +148,7 @@ impl PeerDisc {
             packet = Packet::PeerShuffleResp(Some(self.shuffle_nodes.clone()));
             println!("[PeerDisc:on_peer_shuffle_req] sending resp Some");
             self.timer = Instant::now();
-            self.connect_to_nodes(peers, network);
+            self.connect_to_addrs(peers, network);
         } else {
             packet = Packet::PeerShuffleResp(None);
             println!("[PeerDisc:on_peer_shuffle_req] sending resp None");
@@ -300,7 +312,7 @@ impl PeerDisc {
         }
 
         while network.node_count() < self.neighbor_nodes.len() {
-            std::thread::sleep(time::Duration::from_millis(1));
+            std::thread::sleep(Duration::from_millis(1));
         }
 
         self.neighbor_nodes.iter().for_each(|addr| {
@@ -322,26 +334,29 @@ impl PeerDisc {
         });
     }
 
+    fn connect_to_addr(&mut self, addr: SocketAddr, network: &Network) {
+        if network.is_my_addr(&addr) {
+            return;
+        }
+        let o_addr = self.neighbor_nodes.iter()
+            .find(|&n_addr| *n_addr == addr);
+        if o_addr.is_none() {
+            self.neighbor_nodes.push(addr.clone());
+            let fut = network.add_node_from_addr(&addr);
+            let res = block_on(fut);
+            if let Err(e) = res {
+                println!(
+                    "[PeerDisc:connect_to_addr] failed to connect to node \
+                     {} with error [{:?}]", addr, e);
+            }
+        }
+    }
+
     /// Take a set of addresses, (nodes), add them to our list of
     /// neighbor nodes, and connect to them.
-    fn connect_to_nodes(&mut self, nodes: Vec<SocketAddr>, network: &Network) {
-        nodes.iter().for_each(|&n_addr| {
-            if network.is_my_addr(&n_addr) {
-                return;
-            }
-            let o_addr = self.neighbor_nodes.iter().find(|&addr| *addr == n_addr);
-            if o_addr.is_none() {
-                self.neighbor_nodes.push(n_addr.clone());
-                let fut = network.add_node_from_addr(&n_addr);
-                let res = block_on(fut);
-                if let Err(_) = res {
-                    println!(
-                        "[PeerDisc:on_peer_shuffle_resp] \
-                         failed to connect to node [{}]",
-                        n_addr
-                    );
-                }
-            }
+    fn connect_to_addrs(&mut self, nodes: Vec<SocketAddr>, network: &Network) {
+        nodes.iter().for_each(|&addr| {
+            self.connect_to_addr(addr, network);
         });
     }
 }

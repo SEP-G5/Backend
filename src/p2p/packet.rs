@@ -50,24 +50,7 @@ impl Packet {
     }
 
     fn to_bytes_mut(&self, buf: &mut BytesMut) -> Option<PacketErr> {
-        // This outcommented code does serialization without an
-        // extra allocatino, however it did not work out of the box.
-        // Future work, use this method to serialize without allocation.
-        /*
-        let len = match bincode::serialized_size(self) {
-            Ok(len) => len as usize,
-            Err(e) => return Some(PacketErr::Other(format!("could not estimate packet size [{:?}]", e))),
-        };
-        buf.reserve(len);
-
-        match bincode::serialize_into(buf.as_mut(), self) {
-        Ok(_) => None,
-        Err(e) => Some(PacketErr::Serialize(format!(
-            "failed to serialize packet [{:?}]",e))),
-        }
-         */
-
-        // TODO we are allocating one extra packet here, we shouldnt
+        // TODO we are allocating one extra packet here, we shouldn't
         let tmp_vec = match bincode::serialize(self) {
             Ok(tmp_vec) => tmp_vec,
             Err(e) => {
