@@ -193,7 +193,7 @@ impl Backend {
         network: &Network,
         peer_disc: &mut PeerDisc,
         packet: Packet,
-        addr: SocketAddr,
+        from: SocketAddr,
     ) {
         match packet {
             Packet::PostBlock(block, idx) => {
@@ -241,17 +241,17 @@ impl Backend {
                 let longest_chain = self.chain.get_longest_chain();
                 if let Some(t_blk) = longest_chain.get(idx as usize) {
                     let blk = Some((*t_blk).clone());
-                    match network.unicast(Packet::PostBlock(blk, idx), &addr) {
+                    match network.unicast(Packet::PostBlock(blk, idx), &from) {
                         Ok(_) => {}
-                        Err(_) => eprintln!("Error while unicasting packet to '{}'", addr),
+                        Err(_) => eprintln!("Error while unicasting packet to '{}'", from),
                     }
                 } else {
                     println!("Another node asked for a packet which we do not have");
                 }
             }
-            Packet::PeerShuffleReq(peers) => peer_disc.on_peer_shuffle_req(network, peers, addr),
+            Packet::PeerShuffleReq(peers) => peer_disc.on_peer_shuffle_req(network, peers, from),
             Packet::PeerShuffleResp(o_peers) => {
-                peer_disc.on_peer_shuffle_resp(network, o_peers, addr);
+                peer_disc.on_peer_shuffle_resp(network, o_peers, from);
             }
             Packet::PostTx(transaction) => {
                 // Check if the transaction is either queued or being mined
@@ -277,6 +277,12 @@ impl Backend {
                         network.broadcast(Packet::PostTx(transaction));
                     }
                 }
+            }
+            Packet::JoinReq(node_addr) => {
+                peer_disc.on_join_req(node_addr, from, &network);
+            }
+            Packet::JoinFwd(node_addr) => {
+                peer_disc.on_join_fwd(node_addr, from);
             }
             Packet::CloseConnection() => {
                 eprintln!("got Packet::CloseConnection from network on backend");

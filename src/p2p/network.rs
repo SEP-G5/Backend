@@ -12,6 +12,7 @@ pub type Rx = mpsc::Receiver<(Packet, Option<SocketAddr>)>;
 type StdRx = std::sync::mpsc::Receiver<(Packet, Option<SocketAddr>)>;
 type StdTx = std::sync::mpsc::Sender<(Packet, Option<SocketAddr>)>;
 
+#[derive(Debug)]
 pub enum NetError {
     NodeNotFound,
     Disconnected,

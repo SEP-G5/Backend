@@ -57,6 +57,30 @@ impl PeerDisc {
         }
     }
 
+    /// @param addr The addr provided in the JoinFwd packet.
+    /// @param from The addr we recieved the packet on.
+    pub fn on_join_req(&self, addr: SocketAddr, from: SocketAddr,
+                       network: &Network) {
+        println!("[PeerDisc:on_join_req] addr: {}, from: {}", addr.ip(), from.ip());
+
+        // is addr and socket addr same ip (not port)
+        if addr.ip() != from.ip() {
+            println!("[PeerDisc:on_join_req] ip missmatch, ignoring req");
+            // TODO we may even want to drop the client, or blacklist,
+            // since they are doing something weird?
+            return;
+        }
+
+        // neighbor.for_each(unicast(JoinFwd(addr)))
+
+    }
+
+    /// @param addr The addr provided in the JoinFwd packet.
+    /// @param from The addr we recieved the packet on.
+    pub fn on_join_fwd(&self, addr: SocketAddr, from: SocketAddr) {
+        println!("[PeerDisc:on_join_fwd]");
+    }
+
     /// In response we see the result of the request.
     pub fn on_peer_shuffle_resp(
         &mut self,
@@ -129,14 +153,10 @@ impl PeerDisc {
             println!("[PeerDisc:on_peer_shuffle_req] sending resp None");
         }
 
-        network.unicast(packet, &from);
+        if let Err(e) = network.unicast(packet, &from) {
+            println!("[PeerDisc] failed to unicast: [{:?}]", e);
+        }
         self.print_neighbors();
-    }
-
-    fn print_nodes(tag: &'static str, nodes: &Vec<SocketAddr>) {
-        nodes.iter().for_each(|&addr| {
-            println!("{}\t{}", tag, addr);
-        });
     }
 
     /// Network may drop and accepet new connections, independently of
@@ -150,12 +170,8 @@ impl PeerDisc {
         }
 
         let node_dc = self.neighbor_nodes.len() > net_nodes.len();
-        let new_node = self.neighbor_nodes.len() < net_nodes.len();
-
         if node_dc {
-            //println!("\n[PeerDisc:update_neighbors] node dc");
-            //Self::print_nodes("disc", &self.neighbor_nodes);
-            //Self::print_nodes("net", &net_nodes);
+            println!("\n[PeerDisc:update_neighbors] node dc");
             self.neighbor_nodes.retain(|&addr| {
                 net_nodes
                     .iter()
@@ -164,30 +180,7 @@ impl PeerDisc {
                     .len()
                     == 1
             });
-            //println!("---- After ----");
-            //Self::print_nodes("disc", &self.neighbor_nodes);
-            //Self::print_nodes("net", &net_nodes);
-            //println!("");
             self.print_neighbors();
-        } else if new_node {
-            //println!("\n[PeerDisc:update_neighbors] new node");
-            //Self::print_nodes("disc", &self.neighbor_nodes);
-            //Self::print_nodes("net", &net_nodes);
-            // find missing node, and add to our nodes
-            net_nodes.iter().for_each(|&net_addr| {
-                let o_addr = self.neighbor_nodes.iter().find(|&addr| *addr == net_addr);
-                if o_addr.is_none() {
-                    self.neighbor_nodes.push(net_addr.clone());
-                }
-            });
-
-            //println!("---- After ----");
-            //Self::print_nodes("disc", &self.neighbor_nodes);
-            //Self::print_nodes("net", &net_nodes);
-            //println!("");
-            self.print_neighbors();
-        } else {
-            // TODO check that we have the same nodes - integrity check
         }
     }
 
@@ -295,6 +288,9 @@ impl PeerDisc {
 
         const PEER_LIMIT: usize = 10;
 
+
+        // TODO only connect to one node.
+
         static_peers.iter().take(PEER_LIMIT).for_each(|addr| {
             if network.is_my_addr(addr) {
                 return;
@@ -313,6 +309,13 @@ impl PeerDisc {
                         addr
                     );
                 }
+            }
+        });
+
+        self.neighbor_nodes.iter().for_each(|addr| {
+            let packet = Packet::JoinReq(network.get_addr().clone());
+            if let Err(_) = network.unicast(packet, addr) {
+                println!("failed to send JoinReq to {}", addr);
             }
         });
 
