@@ -15,12 +15,28 @@ enum PeerDiscState {
 
 const STATIC_NODES: &[&str] = &["127.0.0.1:35010", "127.0.0.1:35011", "127.0.0.1:35012"];
 
+#[derive(Clone, Debug)]
+struct NodeInfo {
+    pub addr: SocketAddr,
+    pub age: u64,
+}
+
+impl NodeInfo {
+    fn new(addr: SocketAddr) -> NodeInfo {
+        NodeInfo{
+            addr,
+            age: 0
+        }
+    }
+}
+
 pub struct PeerDisc {
     /// Our state
     state: PeerDiscState,
 
-    /// Our neighbouring nodes. These are confirmed active nodes.
-    neighbor_nodes: Vec<SocketAddr>,
+    /// Our neighboring nodes. These are confirmed active nodes.
+    /// (address, age)
+    neighbor_nodes: Vec<NodeInfo>,
 
     /// A node in this collection has been sent a request, but has not
     /// responded. Instant is when the request was sent.
@@ -28,10 +44,11 @@ pub struct PeerDisc {
 
     /// Nodes that will be sent off to our shuffle node.
     /// Stored here in case it does not accept the shuffle.
-    shuffle_nodes: Vec<SocketAddr>,
+    /// (address, age)
+    shuffle_nodes: Vec<NodeInfo>,
 
     /// The node we will do shuffle with.
-    shuffle_node: Option<SocketAddr>,
+    shuffle_node: Option<NodeInfo>,
 
     timer: Instant,
     shuffle_at_start: bool,
@@ -61,12 +78,12 @@ impl PeerDisc {
         let mut joined_addr = from.clone();
         joined_addr.set_port(port);
 
-        self.neighbor_nodes.iter().for_each(|addr| {
+        self.neighbor_nodes.iter().for_each(|node| {
             let packet = Packet::JoinFwd(joined_addr.clone());
-            if let Err(e) = network.unicast(packet, addr) {
+            if let Err(e) = network.unicast(packet, &node.addr) {
                 //TODO close the connection on error?
                 println!("[PeerDisc:on_join_req] failed to unicast Packet::\
-                          JoinFwd to {:?} with error [{:?}]", addr, e);
+                          JoinFwd to {:?} with error [{:?}]", node.addr, e);
             }
         });
     }
@@ -80,6 +97,7 @@ impl PeerDisc {
         println!("[PeerDisc:on_join_fwd] addr: {}, from {}", addr, from);
 
         self.connect_to_addr(addr, network);
+        self.print_neighbors();
     }
 
     /// In response we see the result of the request.
@@ -93,7 +111,7 @@ impl PeerDisc {
 
         let expecting_resp = self.shuffle_node.is_some();
         if expecting_resp {
-            let correct_from_addr = self.shuffle_node.unwrap() == from;
+            let correct_from_addr = self.shuffle_node.as_ref().unwrap().addr == from;
             if correct_from_addr {
                 self.pending_resp.remove(&from);
 
@@ -124,7 +142,7 @@ impl PeerDisc {
                 println!(
                     "[PeerDisc:on_peer_shuffle_resp] got resp, but \
                      from wrong node, expected [{}] but got [{}]",
-                    self.shuffle_node.unwrap(),
+                    self.shuffle_node.as_ref().unwrap().addr,
                     from
                 );
             }
@@ -145,7 +163,11 @@ impl PeerDisc {
         let packet: Packet;
         if self.state == PeerDiscState::Wait && self.neighbor_nodes.len() > 1 {
             self.prepare_shuffle(network);
-            packet = Packet::PeerShuffleResp(Some(self.shuffle_nodes.clone()));
+            let nodes: Vec<SocketAddr> = self.shuffle_nodes.iter()
+                .map(|node| {
+                    node.addr.clone()
+                }).collect();
+            packet = Packet::PeerShuffleResp(Some(nodes));
             println!("[PeerDisc:on_peer_shuffle_req] sending resp Some");
             self.timer = Instant::now();
             self.connect_to_addrs(peers, network);
@@ -160,9 +182,7 @@ impl PeerDisc {
         self.print_neighbors();
     }
 
-    /// Network may drop and accepet new connections, independently of
-    /// the peer discovery algorithm. Keep our list of nodes up to date
-    /// with the networks.
+    /// Remove dead neighbors, and update age of the living
     fn update_neighbors(&mut self, network: &Network) {
         let net_nodes: Vec<SocketAddr>;
         {
@@ -173,19 +193,23 @@ impl PeerDisc {
         let node_dc = self.neighbor_nodes.len() > net_nodes.len();
         if node_dc {
             println!("\n[PeerDisc:update_neighbors] node dc");
-            self.neighbor_nodes.retain(|&addr| {
+            self.neighbor_nodes.retain(|node| {
                 net_nodes
                     .iter()
-                    .filter(|&net_addr| addr == *net_addr)
+                    .filter(|&net_addr| node.addr == *net_addr)
                     .collect::<Vec<&SocketAddr>>()
                     .len()
                     == 1
             });
             self.print_neighbors();
         }
+
+        self.neighbor_nodes.iter_mut().for_each(|node| {
+            node.age += 1;
+        });
     }
 
-    // TODO may block for long periods of time
+    // TODO may block for long periods of time, is it a problem?
     pub fn poll(&mut self, network: &Network) {
         self.update_neighbors(network);
 
@@ -200,12 +224,12 @@ impl PeerDisc {
         if self.pending_resp.len() == 0 {
             if self.shuffle_node.is_some() {
                 println!("[PeerDisc:state_wait] shuffle node timed out");
-                network.close_node_from_addr(&self.shuffle_node.unwrap());
+                network.close_node_from_addr(&self.shuffle_node.as_ref().unwrap().addr);
                 self.state = PeerDiscState::Shuffle;
                 self.shuffle_node = None;
                 return;
             } else {
-                // TODO have this shuffle timer be random
+                // TODO have this shuffle timer be random?
                 const SHUFFLE_TIMER: Duration = Duration::from_secs(120);
                 if self.timer.elapsed() > SHUFFLE_TIMER || self.shuffle_at_start {
                     if self.neighbor_nodes.len() == 0 && !self.shuffle_at_start {
@@ -242,8 +266,8 @@ impl PeerDisc {
 
         if self.shuffle_nodes.len() == 0 && self.neighbor_nodes.len() > 1 {
             self.shuffle_nodes = self.neighbor_nodes.split_off(self.neighbor_nodes.len() / 2);
-            self.shuffle_nodes.iter().for_each(|addr| {
-                network.close_node_from_addr(addr);
+            self.shuffle_nodes.iter().for_each(|node| {
+                network.close_node_from_addr(&node.addr);
             });
             println!(
                 "[PeerDisc:prepare_shuffle] closed {} nodes in \
@@ -266,14 +290,18 @@ impl PeerDisc {
 
         self.prepare_shuffle(network);
 
-        let packet = Packet::PeerShuffleReq(self.shuffle_nodes.clone());
+        let nodes: Vec<SocketAddr> = self.shuffle_nodes.iter()
+            .map(|node| {
+                node.addr.clone()
+            }).collect();
+        let packet = Packet::PeerShuffleReq(nodes);
         println!("[PeerDisc:state_shuffle] sending req");
-        if let Err(e) = network.unicast(packet, &self.shuffle_node.unwrap()) {
+        if let Err(e) = network.unicast(packet, &self.shuffle_node.as_ref().unwrap().addr) {
             // cannot talk to node, remove it and redo shuffle with someone else
         }
         self.state = PeerDiscState::Wait;
         self.pending_resp
-            .insert(self.shuffle_node.unwrap().clone(), Instant::now());
+            .insert(self.shuffle_node.as_ref().unwrap().addr.clone(), Instant::now());
         self.timer = Instant::now();
     }
 
@@ -299,7 +327,7 @@ impl PeerDisc {
             match res {
                 Ok(_) => {
                     println!("[PeerDisc:state_init] connected to [{}]", addr);
-                    self.neighbor_nodes.push(*addr);
+                    self.neighbor_nodes.push(NodeInfo::new(addr.clone()));
                 }
                 Err(_) => {
                     println!(
@@ -315,11 +343,11 @@ impl PeerDisc {
             std::thread::sleep(Duration::from_millis(1));
         }
 
-        self.neighbor_nodes.iter().for_each(|addr| {
+        self.neighbor_nodes.iter().for_each(|node| {
             let packet = Packet::JoinReq(network.get_port());
-            if let Err(e) = network.unicast(packet, addr) {
+            if let Err(e) = network.unicast(packet, &node.addr) {
                 println!("[PeerDisc:state_init] failed to send JoinReq to {} \
-                          with error [{:?}]", addr, e);
+                          with error [{:?}]", node.addr, e);
             }
         });
 
@@ -329,8 +357,8 @@ impl PeerDisc {
 
     fn print_neighbors(&self) {
         println!("~#~ Neighbor nodes:");
-        self.neighbor_nodes.iter().for_each(|addr| {
-            println!("\t{}", addr);
+        self.neighbor_nodes.iter().for_each(|node| {
+            println!("\t{}", node.addr);
         });
     }
 
@@ -339,9 +367,9 @@ impl PeerDisc {
             return;
         }
         let o_addr = self.neighbor_nodes.iter()
-            .find(|&n_addr| *n_addr == addr);
+            .find(|&node| node.addr == addr);
         if o_addr.is_none() {
-            self.neighbor_nodes.push(addr.clone());
+            self.neighbor_nodes.push(NodeInfo::new(addr.clone()));
             let fut = network.add_node_from_addr(&addr);
             let res = block_on(fut);
             if let Err(e) = res {
