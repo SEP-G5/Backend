@@ -28,7 +28,7 @@ pub enum Packet {
     PostTx(Transaction),
 
     /// A node wants to join the p2p network.
-    JoinReq(SocketAddr),
+    JoinReq(u16),
 
     /// A node has joined the p2p network, and you should add them aswel.
     JoinFwd(SocketAddr),

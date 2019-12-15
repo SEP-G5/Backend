@@ -5,6 +5,7 @@ use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
+use std::{time, thread};
 
 #[derive(PartialEq, Debug)]
 enum PeerDiscState {
@@ -13,14 +14,7 @@ enum PeerDiscState {
     Shuffle,
 }
 
-const STATIC_NODES: &[&str] = &[
-    "127.0.0.1:35010",
-    "127.0.0.1:35011",
-    "127.0.0.1:35012",
-    "127.0.0.1:35013",
-    "127.0.0.1:35014",
-    "127.0.0.1:35015",
-];
+const STATIC_NODES: &[&str] = &["127.0.0.1:35010", "127.0.0.1:35011", "127.0.0.1:35012"];
 
 pub struct PeerDisc {
     /// Our state
@@ -57,22 +51,17 @@ impl PeerDisc {
         }
     }
 
-    /// @param addr The addr provided in the JoinFwd packet.
     /// @param from The addr we recieved the packet on.
-    pub fn on_join_req(&self, addr: SocketAddr, from: SocketAddr,
-                       network: &Network) {
-        println!("[PeerDisc:on_join_req] addr: {}, from: {}", addr.ip(), from.ip());
+    pub fn on_join_req(&self, port: u16, from: SocketAddr, network: &Network) {
+        println!(
+            "[PeerDisc:on_join_req] port: {}, from: {}",
+            port,
+            from.ip()
+        );
 
-        // is addr and socket addr same ip (not port)
-        if addr.ip() != from.ip() {
-            println!("[PeerDisc:on_join_req] ip missmatch, ignoring req");
-            // TODO we may even want to drop the client, or blacklist,
-            // since they are doing something weird?
-            return;
-        }
+
 
         // neighbor.for_each(unicast(JoinFwd(addr)))
-
     }
 
     /// @param addr The addr provided in the JoinFwd packet.
@@ -278,22 +267,20 @@ impl PeerDisc {
 
     fn state_init(&mut self, network: &Network) {
         println!("[PeerDisc:state_init] init");
-        let static_peers: Vec<SocketAddr> = STATIC_NODES
+        let mut static_peers: Vec<SocketAddr> = STATIC_NODES
             .iter()
             .map(|addr| {
                 addr.parse::<SocketAddr>()
                     .expect("failed to parse network address")
             })
+            .filter(|addr| !network.is_my_addr(addr))
             .collect();
+        static_peers.shuffle(&mut rand::thread_rng());
 
-        const PEER_LIMIT: usize = 10;
-
-
-        // TODO only connect to one node.
-
-        static_peers.iter().take(PEER_LIMIT).for_each(|addr| {
-            if network.is_my_addr(addr) {
-                return;
+        const PEER_LIMIT: usize = 1;
+        for addr in static_peers.iter() {
+            if self.neighbor_nodes.len() >= PEER_LIMIT {
+                break;
             }
             let fut = network.add_node_from_addr(addr);
             let res = block_on(fut);
@@ -310,12 +297,17 @@ impl PeerDisc {
                     );
                 }
             }
-        });
+        }
+
+        while network.node_count() < self.neighbor_nodes.len() {
+            std::thread::sleep(time::Duration::from_millis(1));
+        }
 
         self.neighbor_nodes.iter().for_each(|addr| {
-            let packet = Packet::JoinReq(network.get_addr().clone());
-            if let Err(_) = network.unicast(packet, addr) {
-                println!("failed to send JoinReq to {}", addr);
+            let packet = Packet::JoinReq(network.get_port());
+            if let Err(e) = network.unicast(packet, addr) {
+                println!("[PeerDisc:state_init] failed to send JoinReq to {} \
+                          with error [{:?}]", addr, e);
             }
         });
 

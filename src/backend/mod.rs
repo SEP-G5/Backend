@@ -90,7 +90,6 @@ impl Backend {
                         skip,
                         res,
                     } => {
-
                         let blocks = self.chain.get_blocks_for_id(&id);
                         let txs: Vec<Transaction> = blocks
                             .iter()
@@ -278,8 +277,8 @@ impl Backend {
                     }
                 }
             }
-            Packet::JoinReq(node_addr) => {
-                peer_disc.on_join_req(node_addr, from, &network);
+            Packet::JoinReq(node_port) => {
+                peer_disc.on_join_req(node_port, from, &network);
             }
             Packet::JoinFwd(node_addr) => {
                 peer_disc.on_join_fwd(node_addr, from);
