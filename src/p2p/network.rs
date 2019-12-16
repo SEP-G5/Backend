@@ -12,6 +12,7 @@ pub type Rx = mpsc::Receiver<(Packet, Option<SocketAddr>)>;
 type StdRx = std::sync::mpsc::Receiver<(Packet, Option<SocketAddr>)>;
 type StdTx = std::sync::mpsc::Sender<(Packet, Option<SocketAddr>)>;
 
+#[derive(Debug)]
 pub enum NetError {
     NodeNotFound,
     Disconnected,
@@ -29,6 +30,7 @@ impl Network {
     /// Create a new network object, and do setup
     /// @retval Rx The network-to-backend receive channel
     pub fn new(addr: String) -> Network {
+        // TODO what is a good value for the channel here?
         let (tx, rx) = mpsc::channel(1337);
         let (stdtx, stdrx) = std::sync::mpsc::channel();
         let shared = Shared::new(tx);
@@ -43,6 +45,10 @@ impl Network {
         println!("Launching p2p server on {}.", addr);
         block_on(network.run(rx, stdtx));
         network
+    }
+
+    pub fn get_port(&self) -> u16 {
+        self.addr.port()
     }
 
     pub fn get_addr(&self) -> &SocketAddr {
@@ -133,30 +139,27 @@ impl Network {
 
     /// Disconnect the given node, close the connection.
     pub fn close_node_from_addr(&self, node_addr: &SocketAddr) {
-        self.unicast(Packet::CloseConnection(), node_addr);
-    }
-
-    /// Take an open connection and run it as a node.
-    /// @param stream An open connection, ready to be a node.
-    pub fn add_node_from_stream(&self, stream: TcpStream) {
-        let state = self.state.clone();
-        tokio::spawn(async move {
-            let mut node = Node::new(stream, state).await;
-            node.run().await;
-        });
+        if let Err(e) = self.unicast(Packet::CloseConnection(), node_addr) {
+            println!(
+                "[Network:close_node_from_addr] failed to send Packet::CloseConnection [{:?}]",
+                e
+            );
+        }
     }
 
     /// From a socket address, connect to it and run as a node.
     pub async fn add_node_from_addr(&self, node_addr: &SocketAddr) -> Result<(), ()> {
-        let stream: TcpStream = match TcpStream::connect(node_addr).await {
-            Ok(s) => s,
+        match TcpStream::connect(node_addr).await {
+            Ok(stream) => {
+                let state = self.state.clone();
+                tokio::spawn(async move {
+                    let mut node = Node::new(stream, state).await;
+                    node.run().await;
+                });
+                Ok(())
+            },
             Err(_) => return Err(()),
-        };
-
-        let state = self.state.clone();
-        self.add_node_from_stream(stream);
-
-        Ok(())
+        }
     }
 
     async fn run(&self, mut rx: Rx, stdtx: StdTx) {
