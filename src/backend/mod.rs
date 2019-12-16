@@ -90,7 +90,6 @@ impl Backend {
                         skip,
                         res,
                     } => {
-
                         let blocks = self.chain.get_blocks_for_id(&id);
                         let txs: Vec<Transaction> = blocks
                             .iter()
@@ -121,16 +120,9 @@ impl Backend {
                         //network.broadcast(packet);
                     }
                     Operation::CreateTransaction { transaction, res } => {
-                        // Would the transaction be valid
-                        let block = Block::new(
-                            self.chain.get_last_block().calc_hash(),
-                            transaction.clone(),
-                        );
-                        if let Err(e) = self.chain.could_push(&block, true) {
-                            res.send(Err(BackendErr::ChainErr(e)))
-                                .expect("Failed to send");
+                        if let Err(e) = self.enqueue_tx(transaction.clone()) {
+                            res.send(Err(e)).expect("Failed to send");
                         } else {
-                            self.enqueue_tx(transaction.clone());
                             network.broadcast(Packet::PostTx(transaction));
                             res.send(Ok(())).expect("Failed to send");
                         }
@@ -138,7 +130,9 @@ impl Backend {
                     Operation::DebugDumpGraph => {
                         let mut rng = rand::thread_rng();
                         let num: u64 = rng.gen();
-                        self.chain.write_dot(&format!("chain_graph_{}", num));
+                        self.chain
+                            .write_dot(&format!("chain_graph_{}", num))
+                            .expect("Failed to dump graph");
                     }
                 }
             }
@@ -183,8 +177,33 @@ impl Backend {
     }
 
     /// Enqueue a transaction by first checking if it's valid
-    fn enqueue_tx(&mut self, transaction: Transaction) {
-        self.txs.push_back(transaction);
+    fn enqueue_tx(&mut self, transaction: Transaction) -> Result<(), BackendErr> {
+        // Check if the transaction is either queued or being mined
+        // already
+        let mut ignore = false;
+        if let Some(mined) = &self.mined {
+            if mined.get_data().get_signature() == transaction.get_signature() {
+                ignore = true;
+            }
+        }
+        ignore = ignore
+            || self.txs.iter().fold(false, |acc, tx| {
+                acc || tx.get_signature() == transaction.get_signature()
+            });
+
+        // If it's not, then enqueue it. And also broadcast it to other
+        // nodes
+        if !ignore {
+            let block = Block::new(self.chain.get_last_block().calc_hash(), transaction.clone());
+            if let Err(e) = self.chain.could_push(&block, true) {
+                return Err(BackendErr::ChainErr(e));
+            } else {
+                self.txs.push_back(transaction);
+                return Ok(());
+            }
+        }
+
+        Ok(())
     }
 
     /// Handle a packet that was received from the network
@@ -254,28 +273,8 @@ impl Backend {
                 peer_disc.on_peer_shuffle_resp(network, o_peers, addr);
             }
             Packet::PostTx(transaction) => {
-                // Check if the transaction is either queued or being mined
-                // already
-                let mut ignore = false;
-                if let Some(mined) = &self.mined {
-                    if mined.get_data().get_signature() == transaction.get_signature() {
-                        ignore = true;
-                    }
-                }
-                ignore = ignore
-                    || self.txs.iter().fold(false, |acc, tx| {
-                        acc || tx.get_signature() == transaction.get_signature()
-                    });
-
-                // If it's not, then enqueue it. And also broadcast it to other
-                // nodes
-                if !ignore {
-                    let block =
-                        Block::new(self.chain.get_last_block().calc_hash(), transaction.clone());
-                    if let Ok(_) = self.chain.could_push(&block, true) {
-                        self.enqueue_tx(transaction.clone());
-                        network.broadcast(Packet::PostTx(transaction));
-                    }
+                if let Ok(_) = self.enqueue_tx(transaction.clone()) {
+                    network.broadcast(Packet::PostTx(transaction));
                 }
             }
             Packet::CloseConnection() => {
