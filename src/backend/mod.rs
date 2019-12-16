@@ -6,6 +6,7 @@ use crate::blockchain::{self, block::Block, transaction::Transaction, Chain, Cha
 use crate::p2p::network::Network;
 use crate::p2p::packet::Packet;
 use crate::p2p::peer_discovery::PeerDisc;
+use crate::rest::server::{Peer, Peers};
 use crate::rest;
 use operation::Operation;
 use rand::Rng;
@@ -56,11 +57,11 @@ impl Backend {
 
     /// Run the backend.
     ///
-    pub fn run(&mut self, net_addr: String) {
+    pub fn run(&mut self, net_addr: String, rest_port: u16) {
         // Launch REST server
         let (rest_send, rest_recv) = mpsc::channel();
         thread::spawn(move || {
-            rest::server::run_server(rest_send);
+            rest::server::run_server(rest_send, rest_port);
         });
 
         // Launch P2P communicator
@@ -114,10 +115,17 @@ impl Backend {
                             .collect();
                         res.send(txs).expect("Failed to set \"QueryID\"result");
                     }
-                    Operation::QueryPeers { res: _ } => {
+                    Operation::QueryPeers { res } => {
                         println!("query peers TODO");
-                        //let packet = Packet::GetPeers;
-                        //network.broadcast(packet);
+                        let neighbors = peer_disc.get_neighbors();
+                        let peers = Peers{
+                            peers: neighbors.iter().map(|peer| {
+                                Peer{
+                                    ip: peer.to_string()
+                                }
+                            }).collect(),
+                        };
+                        res.send(peers).expect("failed to send QueryPeers");
                     }
                     Operation::CreateTransaction { transaction, res } => {
                         if let Err(e) = self.enqueue_tx(transaction.clone()) {

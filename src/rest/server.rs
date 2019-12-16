@@ -3,7 +3,7 @@ use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode};
 use futures::channel::oneshot;
-use rocket::{self, http::Status, response::status, *};
+use rocket::{self, config, config::Config, http::Status, response::status, *};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
 use std::{io::Read, sync::mpsc, sync::Mutex, usize};
@@ -11,8 +11,13 @@ use std::{io::Read, sync::mpsc, sync::Mutex, usize};
 // ============================================================ //
 
 /// main entry point for the REST server program
-pub fn run_server(sender: mpsc::Sender<Operation>) {
-    rocket::ignite()
+pub fn run_server(sender: mpsc::Sender<Operation>, port: u16) {
+    let config = Config::build(config::Environment::Staging)
+        .address("0.0.0.0")
+        .port(port)
+        .finalize().expect("failed build rocket config");
+
+    rocket::custom(config)
         .mount("/", routes![index, dump_graph, tx_post, tx_get, peer])
         .manage(Mutex::new(sender))
         .launch();

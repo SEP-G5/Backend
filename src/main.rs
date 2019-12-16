@@ -28,8 +28,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         "0.0.0.0:35010".to_string()
     };
 
+    let rest_port: u16 = if args.len() > 4 && args[3] == "-r" {
+        args[4].parse::<u16>().unwrap()
+    } else {
+        8000
+    };
+
     let mut backend = Backend::new();
-    backend.run(net_addr);
+    backend.run(net_addr, rest_port);
 
     Ok(())
     /*

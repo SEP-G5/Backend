@@ -67,6 +67,13 @@ impl PeerDisc {
         }
     }
 
+    /// Get a list of our current neighbors
+    pub fn get_neighbors(&self) -> Vec<SocketAddr> {
+        self.neighbor_nodes.iter().map(|node| {
+            node.addr.clone()
+        }).collect()
+    }
+
     /// @param from The addr we recieved the packet on.
     pub fn on_join_req(&self, port: u16, from: SocketAddr, network: &Network) {
         println!(
