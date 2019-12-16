@@ -131,7 +131,7 @@ impl Backend {
                         if let Err(e) = self.enqueue_tx(transaction.clone()) {
                             res.send(Err(e)).expect("Failed to send");
                         } else {
-                            network.broadcast(Packet::PostTx(transaction));
+                            peer_disc.broadcast(Packet::PostTx(transaction), &network);
                             res.send(Ok(())).expect("Failed to send");
                         }
                     }
@@ -146,14 +146,14 @@ impl Backend {
             }
 
             // Step the mining process once
-            self.mine_step(&network);
+            self.mine_step(&peer_disc, &network);
 
             //std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
 
     /// Run one step of the mining process
-    fn mine_step(&mut self, network: &Network) {
+    fn mine_step(&mut self, peer_disc: &PeerDisc, network: &Network) {
         // Set currently mined block
         if self.txs.len() > 0 && self.mined.is_none() {
             let tx = self.txs.pop_front().unwrap();
@@ -180,7 +180,7 @@ impl Backend {
                 .chain
                 .push(block.clone(), false)
                 .expect("Failed to push block");
-            network.broadcast(Packet::PostBlock(Some(block), idx));
+            peer_disc.broadcast(Packet::PostBlock(Some(block), idx), &network);
         }
     }
 
@@ -282,7 +282,7 @@ impl Backend {
             }
             Packet::PostTx(transaction) => {
                 if let Ok(_) = self.enqueue_tx(transaction.clone()) {
-                    network.broadcast(Packet::PostTx(transaction));
+                    peer_disc.broadcast(Packet::PostTx(transaction), &network);
                 }
             }
             Packet::JoinReq(node_port) => {

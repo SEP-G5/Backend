@@ -95,6 +95,16 @@ impl PeerDisc {
         });
     }
 
+    /// Broadcast to our neighbors
+    pub fn broadcast(&self, packet: Packet, network: &Network) {
+        println!("broadcasting to {} neighbors", self.neighbor_nodes.len());
+        self.neighbor_nodes.iter().for_each(|node| {
+            if let Err(e) = network.unicast(packet.clone(), &node.addr) {
+                println!("[PeerDisc:broadcast_neighbor] failed to broadcast to {} with error [{:?}]", node.addr, e);
+            }
+        })
+    }
+
     /// This is us, getting a recommendation to connect to @addr.
     /// TODO this could be a source of attack, sending false addrs.
     /// @param addr The addr provided in the JoinFwd packet.
