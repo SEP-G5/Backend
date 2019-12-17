@@ -70,9 +70,13 @@ impl Backend {
             rest::server::run_server(rest_send, rest_port);
         });
 
-        // Launch P2P communicator
-        // Do the initial blockchain setup
-        //self.initial_setup();
+        // Do initial blockchain setup
+        let now = Instant::now();
+        let dur = Duration::from_secs(16);
+        while now.elapsed() < dur {
+            self.peer_disc.poll(&self.network);
+        }
+        self.initial_setup();
 
         // Wait on messages
         loop {
