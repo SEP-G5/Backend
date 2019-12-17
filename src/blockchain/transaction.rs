@@ -223,6 +223,12 @@ impl Hashable for Transaction {
     }
 }
 
+impl PartialEq for Transaction {
+    fn eq(&self, other: &Self) -> bool {
+        self.signature == other.signature
+    }
+}
+
 // Tests
 #[cfg(test)]
 mod tests {

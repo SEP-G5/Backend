@@ -1,4 +1,4 @@
-use crate::blockchain::{block::Block, transaction::Transaction};
+use crate::blockchain::{block::Block, hash::Hash, transaction::Transaction};
 use bytes::buf::BufMut;
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,8 @@ pub enum Packet {
     /// Packet that is used to ask for a block at the specified index in the
     /// blockchain.
     GetBlock(u64),
+    /// Packet that is used to ask for a block with the specified hash
+    GetBlockByHash(Hash),
 
     PeerShuffleReq(Vec<SocketAddr>),
 
@@ -38,15 +40,33 @@ pub enum Packet {
 }
 
 impl Packet {
-    fn from_bytes_mut(buf: &mut BytesMut) -> Result<Packet, PacketErr> {
-        let packet_buf = buf.split();
-        match bincode::deserialize(&packet_buf) {
-            Ok(packet) => Ok(packet),
-            Err(e) => Err(PacketErr::Deserialize(format!(
-                "failed to deserialize packet [{:?}]",
-                e
-            ))),
-        }
+    fn from_bytes_mut(buf: &mut BytesMut) -> Result<Option<Packet>, PacketErr> {
+        //let packet_buf = buf.split();
+        let packet = match bincode::deserialize(&buf) {
+            Ok(packet) => packet,
+            Err(e) => match *e {
+                bincode::ErrorKind::Io(e) => match e.kind() {
+                    std::io::ErrorKind::UnexpectedEof => return Ok(None),
+                    _ => {
+                        return Err(PacketErr::Deserialize(format!(
+                            "failed to deserialize packet (size: {}) [{:?}]",
+                            buf.len(),
+                            e
+                        )))
+                    }
+                },
+                _ => {
+                    return Err(PacketErr::Deserialize(format!(
+                        "failed to deserialize packet (size: {}) [{:?}]",
+                        buf.len(),
+                        e
+                    )))
+                }
+            },
+        };
+        let size = bincode::serialized_size(&packet).unwrap() as usize;
+        buf.split_to(size);
+        Ok(Some(packet))
     }
 
     fn to_bytes_mut(&self, buf: &mut BytesMut) -> Option<PacketErr> {
@@ -107,10 +127,7 @@ impl Decoder for PacketCodec {
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         if !buf.is_empty() {
-            match Packet::from_bytes_mut(buf) {
-                Ok(packet) => Ok(Some(packet)),
-                Err(e) => Err(e),
-            }
+            Packet::from_bytes_mut(buf)
         } else {
             Ok(None)
         }

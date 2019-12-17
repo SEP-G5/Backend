@@ -34,8 +34,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         8000
     };
 
-    let mut backend = Backend::new();
-    backend.run(net_addr, rest_port);
+    let mut backend = Backend::new(net_addr, rest_port);
+    backend.run();
 
     Ok(())
     /*

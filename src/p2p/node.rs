@@ -60,7 +60,7 @@ impl Node {
             match res {
                 // process messages from the remote node
                 Ok(PacketFrom::P2P(packet, addr)) => {
-                    println!("packet from p2p");
+                    //println!("\npacket from p2p ('{:?}')", packet);
                     match self
                         .state
                         .lock()
@@ -70,19 +70,19 @@ impl Node {
                         .await
                     {
                         Ok(_) => (),
-                        Err(_) => (),
+                        Err(_) => println!("failed to receive from p2p [{}]", addr),
                     }
                 }
                 // process messages from backend
                 Ok(PacketFrom::Backend(packet)) => {
-                    println!("packet from backend");
+                    //println!("packet from backend");
                     match packet {
                         Packet::CloseConnection() => {
                             println!("node {} got CloseConnection packet", self.addr);
                             break;
                         }
                         packet => match self.packets.send(packet).await {
-                            Ok(_) => (),
+                            Ok(_) => {}
                             Err(e) => println!("failed to send to node [{:?}]", e),
                         },
                     }
