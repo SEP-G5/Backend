@@ -72,7 +72,7 @@ impl Backend {
 
         // Launch P2P communicator
         // Do the initial blockchain setup
-        self.initial_setup();
+        //self.initial_setup();
 
         // Wait on messages
         loop {
@@ -142,9 +142,7 @@ impl Backend {
                             PushResult::Ignored => {
                                 res.send(Ok(())).expect("Success (Already known)");
                             }
-                            PushResult::MissingParent => {
-                                // Add to backlog
-                            }
+                            PushResult::MissingParent => {}
                             PushResult::Added => {
                                 self.network.broadcast(Packet::PostTx(transaction));
                                 res.send(Ok(())).expect("Success");
@@ -169,7 +167,7 @@ impl Backend {
     fn mine(&mut self) {
         match self.miner.mine(&self.chain) {
             Some(block) => {
-                println!("Successfully mined a block");
+                //println!("Successfully mined a block");
                 match self.chain.push(block.clone(), false) {
                     Ok(idx) => {
                         self.network.broadcast(Packet::PostBlock(Some(block), idx));
@@ -201,12 +199,11 @@ impl Backend {
         let packet = Packet::GetBlockByHash(block.get_parent_hash().clone());
         self.network.broadcast(packet);
         self.backlog.push(block);
-        println!("[BACKLOG] Added | Len: {}", self.backlog.len());
+        //println!("[BACKLOG] Added | Len: {}", self.backlog.len());
     }
 
     fn handle_backlog(&mut self) {
-        println!("[BACKLOG] Before handling | Len: {}", self.backlog.len());
-
+        //println!("[BACKLOG] Before handling | Len: {}", self.backlog.len());
         let mut changes = true;
         while changes {
             changes = false;
@@ -217,9 +214,7 @@ impl Backend {
                     match self.chain.push(block.clone(), false) {
                         Ok(_) => {}
                         Err(e) => match e {
-                            ChainErr::NonUniqueTransactionID => {
-                                // Silently ignore...
-                            }
+                            ChainErr::NonUniqueTransactionID => {}
                             _ => {
                                 panic!("Failed to push block ({}) from backlog: {:?}", block, e);
                             }
@@ -230,7 +225,7 @@ impl Backend {
                 }
             }
         }
-        println!("[BACKLOG] After handling | Len: {}", self.backlog.len());
+        //println!("[BACKLOG] After handling | Len: {}", self.backlog.len());
     }
 
     /// Handle a packet that was received from the network
@@ -243,10 +238,10 @@ impl Backend {
                     self.backlog.retain(|b| b != &block);
                     let len_after = self.backlog.len();
                     if len_after < len_before {
-                        println!(
-                            "DID REMOVE {} DUPLICATES FROM BACKLOG",
-                            len_before - len_after
-                        );
+                        //println!(
+                        //    "DID REMOVE {} DUPLICATES FROM BACKLOG",
+                        //    len_before - len_after
+                        //);
                     }
 
                     // Is this block valid to be placed in the blockchain?
@@ -255,6 +250,7 @@ impl Backend {
                             ChainErr::BadParent => {
                                 self.backlog_push(block);
                             }
+                            ChainErr::AlreadyPresent => {}
                             _ => {
                                 let mut rng = rand::thread_rng();
                                 let num = rng.gen::<u32>();
@@ -301,7 +297,7 @@ impl Backend {
                 let chain = self.chain.get_chain_for_block_hash(&hash);
                 let block = chain.last().unwrap().clone().clone();
                 let packet = Packet::PostBlock(Some(block), (chain.len() - 1) as u64);
-                self.network.unicast(packet, &from);
+                let _ = self.network.unicast(packet, &from);
             }
             Packet::PeerShuffleReq(peers) => {
                 self.peer_disc

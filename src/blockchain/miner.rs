@@ -34,6 +34,11 @@ impl Miner {
     }
 
     pub fn push_transaction(&mut self, chain: &Chain, transaction: Transaction) -> PushResult {
+        println!(
+            "[PUSH TX] Checking to push transaction: '{}'",
+            transaction.get_id()
+        );
+
         // Check if the transaction is either queued or being mined
         // already
         let mut ignore = false;
@@ -54,6 +59,7 @@ impl Miner {
             if let Err(e) = chain.could_push(&block, true) {
                 match e {
                     ChainErr::BadParent => {
+                        // TODO(Filip Björklund): Deperecate use of this. SHOULD not happen
                         return PushResult::MissingParent;
                     }
                     _ => {
@@ -61,6 +67,8 @@ impl Miner {
                     }
                 }
             } else {
+                println!("[PUSH TX] Pushed transaction: '{}'", transaction.get_id());
+
                 self.queue.push_back(transaction);
                 return PushResult::Added;
             }

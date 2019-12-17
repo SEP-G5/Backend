@@ -81,10 +81,10 @@ impl Network {
 
     /// Attempt to broadcast the packet to all connected nodes.
     async fn broadcast_internal(&self, packet: Packet) {
-        println!("broadcasting packet");
         let nodes = &mut self.state.lock().await.b2n_tx;
+        println!("broadcasting packet to {} nodes", nodes.len());
         for (addr, tx) in nodes.iter_mut() {
-            println!("sending to {:?}", addr);
+            //println!("sending to {:?}", addr);
             match tx.send((packet.clone(), None)).await {
                 Ok(_) => {}
                 Err(_) => println!("failed to send to node"),
