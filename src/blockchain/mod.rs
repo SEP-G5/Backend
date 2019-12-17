@@ -1,5 +1,6 @@
 pub mod block;
 pub mod hash;
+pub mod miner;
 pub mod transaction;
 pub mod util;
 

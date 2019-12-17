@@ -15,7 +15,8 @@ pub fn run_server(sender: mpsc::Sender<Operation>, port: u16) {
     let config = Config::build(config::Environment::Staging)
         .address("0.0.0.0")
         .port(port)
-        .finalize().expect("failed build rocket config");
+        .finalize()
+        .expect("failed build rocket config");
 
     rocket::custom(config)
         .mount("/", routes![index, dump_graph, tx_post, tx_get, peer])

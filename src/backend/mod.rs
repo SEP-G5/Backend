@@ -2,7 +2,9 @@ pub mod operation;
 
 // ========================================================================== //
 
-use crate::blockchain::{block::Block, transaction::Transaction, BlockType, Chain, ChainErr};
+use crate::blockchain::{
+    miner::Miner, miner::PushResult, transaction::Transaction, BlockType, Chain, ChainErr,
+};
 use crate::p2p::network::Network;
 use crate::p2p::packet::Packet;
 use crate::p2p::peer_discovery::PeerDisc;
@@ -11,17 +13,11 @@ use crate::rest::server::{Peer, Peers};
 use operation::Operation;
 use rand::Rng;
 use std::{
-    collections::VecDeque,
     net::SocketAddr,
     sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
-
-// ========================================================================== //
-
-// Number of mining iterations per main-loop iteration
-const MINE_ITER: u32 = 1;
 
 // ========================================================================== //
 
@@ -42,10 +38,8 @@ pub struct Backend {
     rest_port: u16,
     /// Blockchain
     chain: Chain,
-    /// Transaction queue
-    txs: VecDeque<Transaction>,
-    /// Block being mined
-    mined: Option<BlockType>,
+    /// Miner
+    miner: Miner,
     /// Block backlog
     backlog: Vec<BlockType>,
 }
@@ -61,8 +55,7 @@ impl Backend {
             peer_disc: PeerDisc::new(),
             rest_port,
             chain: Chain::new(),
-            txs: VecDeque::new(),
-            mined: None,
+            miner: Miner::new(),
             backlog: vec![],
         }
     }
@@ -138,15 +131,23 @@ impl Backend {
                         res.send(peers).expect("failed to send QueryPeers");
                     }
                     Operation::CreateTransaction { transaction, res } => {
-                        match self.enqueue_tx(transaction.clone()) {
-                            Ok(did_insert) => {
-                                if did_insert {
-                                    self.network.broadcast(Packet::PostTx(transaction));
-                                }
-                                res.send(Ok(())).expect("Success");
-                            }
-                            Err(e) => {
+                        match self
+                            .miner
+                            .push_transaction(&self.chain, transaction.clone())
+                        {
+                            PushResult::Invalid(e) => {
+                                let e = BackendErr::ChainErr(e);
                                 res.send(Err(e)).expect("Failed to send");
+                            }
+                            PushResult::Ignored => {
+                                res.send(Ok(())).expect("Success (Already known)");
+                            }
+                            PushResult::MissingParent => {
+                                // Add to backlog
+                            }
+                            PushResult::Added => {
+                                self.network.broadcast(Packet::PostTx(transaction));
+                                res.send(Ok(())).expect("Success");
                             }
                         }
                     }
@@ -161,105 +162,39 @@ impl Backend {
             }
 
             // Step the mining process once
-            self.mine_step();
-
-            //std::thread::sleep(std::time::Duration::from_millis(5));
+            self.mine();
         }
     }
 
-    /// Run one step of the mining process
-    fn mine_step(&mut self) {
-        // Set currently mined block
-        if self.txs.len() > 0 && self.mined.is_none() {
-            let tx = self.txs.pop_front().unwrap();
-            self.mined = Some(Block::new(self.chain.get_last_block().calc_hash(), tx));
-        }
-
-        // Mine block (at this point 'mined' cannot be 'None')
-        let mut did_mine = false;
-        if let Some(block) = &mut self.mined {
-            for _ in [0..MINE_ITER].iter() {
-                if let true = self.chain.mine_step(block) {
-                    did_mine = true;
-                }
-            }
-        } else {
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-
-        if did_mine {
-            // Add block to blockchain and broadcast it
-            let block = self.mined.take().expect("Mined cannot be 'None' here");
-            println!("Successfully mined a block");
-            let idx = match self.chain.push(block.clone(), false) {
-                Ok(idx) => idx,
-                Err(e) => {
-                    let mut rng = rand::thread_rng();
-                    let num = rng.gen::<u32>();
-                    let name = format!("chain_crash_{}", num);
-                    self.chain.write_dot(&name);
-                    panic!(
-                        "Failed to push mined block ({}): {:?} (The chain is dumped with name: {}",
-                        block, e, name
-                    );
-                }
-            };
-            self.network.broadcast(Packet::PostBlock(Some(block), idx));
-
-            // Check backlog
-            self.handle_backlog();
-        }
-    }
-
-    /// Enqueue a transaction by first checking if it's valid
-    fn enqueue_tx(&mut self, transaction: Transaction) -> Result<bool, BackendErr> {
-        // Check if the transaction is either queued or being mined
-        // already
-        let mut ignore = false;
-        if let Some(mined) = &self.mined {
-            if mined.get_data().get_signature() == transaction.get_signature() {
-                ignore = true;
-            }
-        }
-        ignore = ignore
-            || self.txs.iter().fold(false, |acc, tx| {
-                acc || tx.get_signature() == transaction.get_signature()
-            });
-
-        // If it's not, then enqueue it. And also broadcast it to other
-        // nodes
-        if !ignore {
-            let block = Block::new(self.chain.get_last_block().calc_hash(), transaction.clone());
-            if let Err(e) = self.chain.could_push(&block, true) {
-                match e {
-                    ChainErr::BadParent => {
-                        self.backlog_push(block);
-                        return Ok(true);
+    fn mine(&mut self) {
+        match self.miner.mine(&self.chain) {
+            Some(block) => {
+                println!("Successfully mined a block");
+                match self.chain.push(block.clone(), false) {
+                    Ok(idx) => {
+                        self.network.broadcast(Packet::PostBlock(Some(block), idx));
                     }
-                    _ => {
-                        return Err(BackendErr::ChainErr(e));
-                    }
-                }
-            } else {
-                self.txs.push_back(transaction);
-                return Ok(true);
-            }
-        }
+                    Err(e) => match e {
+                        ChainErr::NonUniqueTransactionID => {}
+                        _ => {
+                            let mut rng = rand::thread_rng();
+                            let num = rng.gen::<u32>();
+                            let name = format!("chain_crash_{}", num);
+                            let _ = self.chain.write_dot(&name);
+                            panic!(
+                                "Failed to push mined block ({}): {:?} (The\
+                                 chain is dumped with name: {}",
+                                block, e, name
+                            );
+                        }
+                    },
+                };
 
-        Ok(false)
-    }
-
-    fn clean_mine_queue_for(&mut self, block: &BlockType) {
-        if let Some(mined) = &self.mined {
-            if mined.get_data() == block.get_data() {
-                println!(
-                    "Received a block ({}) that we ourselves are currently mining. We will stop",
-                    block
-                );
-                self.mined = None;
+                // Check backlog
+                self.handle_backlog();
             }
+            None => {}
         }
-        self.txs.retain(|tx| tx != block.get_data());
     }
 
     fn backlog_push(&mut self, block: BlockType) {
@@ -279,15 +214,18 @@ impl Backend {
                 let block = self.backlog.get(i).unwrap();
                 if self.chain.could_push(block, false).is_ok() {
                     let block = self.backlog.remove(i);
-                    self.clean_mine_queue_for(&block);
-                    let _idx = self
-                        .chain
-                        .push(block, false)
-                        .expect("Failed to push block even though a pre-check was done");
+                    match self.chain.push(block.clone(), false) {
+                        Ok(_) => {}
+                        Err(e) => match e {
+                            ChainErr::NonUniqueTransactionID => {
+                                // Silently ignore...
+                            }
+                            _ => {
+                                panic!("Failed to push block ({}) from backlog: {:?}", block, e);
+                            }
+                        },
+                    };
                     changes = true;
-
-                    // TODO(Filip Björklund): REMOVE FROM MINED AND TXS QUEUE?????
-
                     break;
                 }
             }
@@ -331,11 +269,6 @@ impl Backend {
                             }
                         }
                     } else {
-                        // Are we currently mining a block with the same
-                        // transaction? In that case stop the mining and accept
-                        // this block instead (provided it's valid).
-                        //self.clean_mine_queue_for(&block);
-
                         // Where do we add this new block in the chain? Is the
                         // location (using parent hash) actually valid.
                         let at_idx = self
@@ -379,10 +312,14 @@ impl Backend {
                     .on_peer_shuffle_resp(&self.network, o_peers, from);
             }
             Packet::PostTx(transaction) => {
-                if let Ok(did_insert) = self.enqueue_tx(transaction.clone()) {
-                    if did_insert {
+                match self
+                    .miner
+                    .push_transaction(&self.chain, transaction.clone())
+                {
+                    PushResult::Added => {
                         self.network.broadcast(Packet::PostTx(transaction));
                     }
+                    _ => {}
                 }
             }
             Packet::JoinReq(node_port) => {
