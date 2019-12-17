@@ -75,6 +75,7 @@ impl Backend {
         let dur = Duration::from_secs(16);
         while now.elapsed() < dur {
             self.peer_disc.poll(&self.network);
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
         self.initial_setup();
 

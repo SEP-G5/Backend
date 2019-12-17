@@ -1,7 +1,7 @@
 use crate::backend::{operation::Operation, BackendErr};
 use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
-use base64::{decode_config, encode};
+use base64::{decode_config, encode_config};
 use futures::channel::oneshot;
 use rocket::{self, config, config::Config, http::Status, response::status, *};
 use serde::{Deserialize, Serialize};
@@ -88,11 +88,11 @@ fn transaction_to_json_transaction(t: &Transaction) -> Value {
         "id": t.get_id(),
         "timestamp": t.get_timestamp(),
         "publicKeyInput": Value::Null,
-        "publicKeyOutput": encode(t.get_public_key_output()),
-        "signature": encode(t.get_signature()),
+        "publicKeyOutput": encode_config(t.get_public_key_output(), base64::URL_SAFE),
+        "signature": encode_config(t.get_signature(), base64::URL_SAFE),
     });
     if let Some(pk) = t.get_public_key_input() {
-        *v.get_mut("publicKeyInput").unwrap() = json!(encode(pk));
+        *v.get_mut("publicKeyInput").unwrap() = json!(encode_config(pk, base64::URL_SAFE));
     }
     v
 }
@@ -109,7 +109,7 @@ fn json_transaction_to_transaction(v: &Value) -> Result<Transaction, String> {
     };
 
     let pub_key_input: Option<PubKey> = match v["publicKeyInput"].as_str() {
-        Some(s) => match decode_config(s, base64::STANDARD) {
+        Some(s) => match decode_config(s, base64::URL_SAFE) {
             Ok(v) => Some(v),
             Err(e) => {
                 return Err(make_response(&format!(
@@ -122,7 +122,7 @@ fn json_transaction_to_transaction(v: &Value) -> Result<Transaction, String> {
     };
 
     let pub_key_output: PubKey = match v["publicKeyOutput"].as_str() {
-        Some(s) => match decode_config(s, base64::STANDARD) {
+        Some(s) => match decode_config(s, base64::URL_SAFE) {
             Ok(v) => v,
             Err(e) => {
                 return Err(make_response(&format!(
@@ -135,7 +135,7 @@ fn json_transaction_to_transaction(v: &Value) -> Result<Transaction, String> {
     };
 
     let signature: Signature = match v["signature"].as_str() {
-        Some(s) => match decode_config(s, base64::STANDARD) {
+        Some(s) => match decode_config(s, base64::URL_SAFE) {
             Ok(v) => v,
             Err(e) => {
                 return Err(make_response(&format!(
@@ -288,7 +288,7 @@ fn tx_get(
     let op: Operation;
 
     if id.is_none() && pk.is_some() {
-        let pk_vec = match decode_config(&pk.unwrap().as_bytes(), base64::STANDARD) {
+        let pk_vec = match decode_config(&pk.unwrap().as_bytes(), base64::URL_SAFE) {
             Ok(v) => v,
             Err(_) => {
                 return Err(status::Custom(
