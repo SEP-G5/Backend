@@ -342,7 +342,7 @@ impl PeerDisc {
             .iter()
             .map(|node| node.addr.clone())
             .collect();
-        let mut my_addr: SocketAddr = "0.0.0.0:0".parse().expect("failed to parse addr");
+        let mut my_addr: SocketAddr = "127.0.0.1:0".parse().expect("failed to parse addr");
         my_addr.set_port(network.get_port());
         nodes.push(my_addr);
         let packet = Packet::PeerShuffleReq(nodes);
