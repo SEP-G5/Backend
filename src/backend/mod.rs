@@ -6,8 +6,8 @@ use crate::blockchain::{self, block::Block, transaction::Transaction, Chain, Cha
 use crate::p2p::network::Network;
 use crate::p2p::packet::Packet;
 use crate::p2p::peer_discovery::PeerDisc;
-use crate::rest::server::{Peer, Peers};
 use crate::rest;
+use crate::rest::server::{Peer, Peers};
 use operation::Operation;
 use rand::Rng;
 use std::{
@@ -118,12 +118,13 @@ impl Backend {
                     Operation::QueryPeers { res } => {
                         println!("query peers TODO");
                         let neighbors = peer_disc.get_neighbors();
-                        let peers = Peers{
-                            peers: neighbors.iter().map(|peer| {
-                                Peer{
-                                    ip: peer.to_string()
-                                }
-                            }).collect(),
+                        let peers = Peers {
+                            peers: neighbors
+                                .iter()
+                                .map(|peer| Peer {
+                                    ip: peer.to_string(),
+                                })
+                                .collect(),
                         };
                         res.send(peers).expect("failed to send QueryPeers");
                     }

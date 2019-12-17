@@ -157,7 +157,7 @@ impl Network {
                     node.run().await;
                 });
                 Ok(())
-            },
+            }
             Err(_) => return Err(()),
         }
     }
