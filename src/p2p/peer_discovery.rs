@@ -420,7 +420,6 @@ impl PeerDisc {
         }
         let o_addr = self.neighbor_nodes.iter().find(|&node| node.addr == addr);
         if o_addr.is_none() {
-            self.neighbor_nodes.push(NodeInfo::new(addr.clone()));
             let fut = network.add_node_from_addr(&addr);
             let res = block_on(fut);
             if let Err(e) = res {
@@ -429,6 +428,8 @@ impl PeerDisc {
                      {} with error [{:?}]",
                     addr, e
                 );
+            } else {
+                self.neighbor_nodes.push(NodeInfo::new(addr.clone()));
             }
         }
     }
