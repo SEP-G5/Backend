@@ -1,4 +1,4 @@
-use crate::blockchain::{block::Block, transaction::Transaction};
+use crate::blockchain::{block::Block, hash::Hash, transaction::Transaction};
 use bytes::buf::BufMut;
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,8 @@ pub enum Packet {
     /// Packet that is used to ask for a block at the specified index in the
     /// blockchain.
     GetBlock(u64),
+    /// Packet that is used to ask for a block with the specified hash
+    GetBlockByHash(Hash),
 
     PeerShuffleReq(Vec<SocketAddr>),
 

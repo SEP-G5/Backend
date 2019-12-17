@@ -34,6 +34,7 @@ pub enum ChainErr {
     NonUniqueTransactionID,
     BadTransaction(String),
     BadHash,
+    AlreadyPresent,
 }
 
 // ========================================================================== //
@@ -114,6 +115,7 @@ impl Chain {
 
     /// Push a new block at the end of the blockchain
     pub fn push(&mut self, block: BlockType, ignore_hash: bool) -> Result<u64, ChainErr> {
+        // Check if block can be pushed
         self.could_push(&block, ignore_hash)?;
 
         // Find parent index
@@ -152,10 +154,22 @@ impl Chain {
         }
 
         // Find parent index
-        match self.get_node_index_for_hash(&block.get_parent_hash()) {
+        let parent_index = match self.get_node_index_for_hash(&block.get_parent_hash()) {
             Some(i) => i,
             None => return Err(ChainErr::BadParent),
         };
+
+        // Check that parent does not already have this as child
+        if parent_index < self.nodes.len() - 1 {
+            let node = self.nodes.last().unwrap();
+            for b in node.get_blocks().iter() {
+                if b.get_data().get_signature() == block.get_data().get_signature() {
+                    if b.calc_hash() == block.calc_hash() {
+                        return Err(ChainErr::AlreadyPresent);
+                    }
+                }
+            }
+        }
 
         // Check that the input to the transaction is valid
         if let Some(input) = block.get_data().get_public_key_input() {
@@ -212,13 +226,19 @@ impl Chain {
     /// currently unique for the blockchain. If any existing blocks in the chain
     /// has the ID then this function returns false.
     fn is_unique_id(&self, block: &BlockType) -> bool {
-        for n in self.nodes.iter() {
-            for b in n.get_blocks().iter() {
-                if b.get_data().get_id() == block.get_data().get_id() {
-                    return false;
-                }
+        let longest_chain = self.get_chain_for_block_hash(block.get_parent_hash());
+        for b in longest_chain.iter() {
+            if b.get_data().get_id() == block.get_data().get_id() {
+                return false;
             }
         }
+        //for n in self.nodes.iter() {
+        //    for b in n.get_blocks().iter() {
+        //        if b.get_data().get_id() == block.get_data().get_id() {
+        //            return false;
+        //        }
+        //    }
+        //}
         true
     }
 
@@ -305,6 +325,7 @@ impl Chain {
     /// This graph can then be visualized with graphviz.
     ///
     pub fn write_dot_id(&self, path: &str, id: &str) -> io::Result<()> {
+        /*
         let mut dot = format!(
             "digraph Blockchain {{\n\
              \tgraph [bgcolor=\"{}\" penwidth=5.0]\n\
@@ -312,6 +333,8 @@ impl Chain {
              \tedge [color=\"{}\" penwidth=5.0]\n",
             DOT_BG_COLOR, DOT_SPEC_COLOR, DOT_FILL_COLOR, DOT_FILL_COLOR
         );
+        */
+        let mut dot = format!("digraph Blockchain {{\n");
 
         for (i, node) in self.nodes.iter().enumerate() {
             for blk in node.get_blocks().iter() {
@@ -330,7 +353,7 @@ impl Chain {
                 };
 
                 dot.push_str(&format!(
-                    "\t\"{}\"[label=\"{}...\\nID: {}\", shape=box, color=\"{}\"];\n",
+                    "\t\"{}\"[label=\"{}...\\nID: {}\", shape=box, color=\"{}\"]\n",
                     hash_str,
                     &hash_str[0..6],
                     blk.get_data().get_id(),
@@ -342,7 +365,7 @@ impl Chain {
                     for blk_c in self.nodes[i + 1].get_blocks().iter() {
                         let hash_str_c = hash::hash_to_str(&blk_c.calc_hash());
                         if *blk_c.get_parent_hash() == hash {
-                            dot.push_str(&format!("\t\"{}\" -> \"{}\";\n", hash_str, hash_str_c));
+                            dot.push_str(&format!("\t\"{}\" -> \"{}\"\n", hash_str, hash_str_c));
                         }
                     }
                 }
@@ -351,7 +374,7 @@ impl Chain {
                 if let Some(blk_p) = tx_paren {
                     let hash_str_p = hash::hash_to_str(&blk_p.calc_hash());
                     dot.push_str(&format!(
-                        "\t\"{}\" -> \"{}\" [color=\"{}\", style=dotted];\n",
+                        "\t\"{}\" -> \"{}\" [color=\"{}\", style=dotted]\n",
                         hash_str_p, hash_str, DOT_REL_COLOR
                     ));
                 }
@@ -367,7 +390,7 @@ impl Chain {
     ///
     /// The returned chain is the direct blockchain and not the transaction
     /// relation chain
-    fn get_chain_for_block_hash(&self, hash: &Hash) -> Vec<&BlockType> {
+    pub fn get_chain_for_block_hash(&self, hash: &Hash) -> Vec<&BlockType> {
         let mut output = vec![];
         let mut hash = hash.clone();
 
