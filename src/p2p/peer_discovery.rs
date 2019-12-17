@@ -135,7 +135,8 @@ impl PeerDisc {
                 if req_accepted {
                     let has_peers = peers.is_some();
                     if has_peers {
-                        let peers: Vec<SocketAddr> = peers.unwrap();
+                        let mut peers: Vec<SocketAddr> = peers.unwrap();
+                        Self::clean_addrs(&mut peers, from);
                         self.connect_to_addrs(peers, network);
                     }
 
@@ -143,19 +144,17 @@ impl PeerDisc {
                     self.shuffle_nodes.clear();
                     self.timer = Instant::now();
                 } else {
-                    // shuffle req was denied, if there are others, try
-                    // with them
-                    // AYY
                     self.shuffle_node = None;
                     println!(
                         "[PeerDisc:on_peer_shuffle_resp] shuffle req denied {:?}, {:?}",
                         self.state, self.pending_resp
                     );
 
-                    if self.neighbor_nodes.len() == 0 {
+                    if self.neighbor_nodes.len() < 2 {
                         let nodes = self.shuffle_nodes.iter().map(|node| node.addr).collect();
                         self.connect_to_addrs(nodes, network);
                         self.shuffle_nodes.clear();
+                        self.timer = Instant::now();
                     } else {
                         self.state = PeerDiscState::Shuffle;
                     }
@@ -172,6 +171,26 @@ impl PeerDisc {
             println!("[PeerDisc:on_peer_shuffle_resp] got unexpected resp");
         }
         self.print_neighbors();
+    }
+
+    /// Example:
+    ///
+    ///   Given:
+    ///     origin = 192.168.1.10
+    ///     addrs = ["127.0.0.1:35011", "127.0.0.1:35012"]
+    ///
+    ///   Do:
+    ///     127.0.0.1:35011 -> 192.168.1.10:35011
+    ///     127.0.0.1:35012 -> 192.168.1.10:35012
+    pub fn clean_addrs(addrs: &mut Vec<SocketAddr>, origin: SocketAddr) {
+        let localhost: SocketAddr = "127.0.0.1:0".parse().expect("failed to parse socket addr");
+        addrs.iter_mut().for_each(|addr| {
+            if addr.ip() == localhost.ip() {
+                let port = addr.port();
+                *addr = origin;
+                addr.set_port(port);
+            }
+        });
     }
 
     /// We got a shuffle request.
@@ -193,19 +212,8 @@ impl PeerDisc {
             packet = Packet::PeerShuffleResp(Some(nodes));
             println!("[PeerDisc:on_peer_shuffle_req] sending resp Some");
             self.timer = Instant::now();
-            let self_ip: SocketAddr = "0.0.0.0:0".parse().expect("failed to parse socket addr");
-            peers.iter_mut().for_each(|addr| {
-                if addr.ip() == self_ip.ip() {
-                    let before = addr.clone();
-                    let port = addr.port();
-                    *addr = from;
-                    addr.set_port(port);
-                    println!(
-                        "[PeerDisc:on_peer_shuffle_req] found self addr: {} -> {}",
-                        before, addr
-                    );
-                }
-            });
+
+            Self::clean_addrs(&mut peers, from);
             self.connect_to_addrs(peers, network);
         } else {
             packet = Packet::PeerShuffleResp(None);
