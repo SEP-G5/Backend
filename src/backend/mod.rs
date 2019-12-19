@@ -237,6 +237,7 @@ impl Backend {
     fn handle_packet(&mut self, packet: Packet, from: SocketAddr) {
         match packet {
             Packet::PostBlock(block, idx) => {
+                println!("got block");
                 if let Some(block) = block {
                     // Remove identical from backlog
                     let len_before = self.backlog.len();
@@ -295,7 +296,11 @@ impl Backend {
                         Err(_) => eprintln!("Error while unicasting packet to '{}'", from),
                     }
                 } else {
-                    println!("Another node asked for a packet which we do not have");
+                    println!("Another node asked for a packet which we do not have, posting None at pos {}", idx);
+                    match self.network.unicast(Packet::PostBlock(None, idx), &from) {
+                        Ok(_) => {}
+                        Err(_) => eprintln!("Error while unicasting packet to '{}'", from),
+                    };
                 }
             }
             Packet::GetBlockByHash(hash) => {
@@ -356,7 +361,7 @@ impl Backend {
         };
 
         // Current block to wait for
-        let mut cur_idx = 0;
+        let mut cur_idx = 1;
         const TIMEOUT: Duration = Duration::from_millis(500);
         'outer: loop {
             // Request the block
@@ -392,6 +397,8 @@ impl Backend {
                                     if let Some(block) = block {
                                         // Got block, add to chain and go on to the
                                         // next index.
+                                        println!("\npushing: {}", block);
+                                        println!("on chain: {}", self.chain.block_count());
                                         self.chain.push(block, false).expect(
                                             "Failed to push block when building initial chain",
                                         );
