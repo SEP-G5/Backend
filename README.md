@@ -39,6 +39,17 @@ To build with only compiler frontend.
 cargo check
 ```
 
+## Docker
+Build
+```
+docker build -t backend-blockchain .
+```
+
+Run
+```
+docker run -d -p 35010:35010 -p 8000:8000 backend-blockchain
+```
+
 # Roadmap
 Here is an early estimate of our roadmap. They are high level blocks of work, which we will break down into tasks and work on them in week-long sprints.
 ![img](https://github.com/SEP-G5/Backend/blob/master/res/roadmap.png)
