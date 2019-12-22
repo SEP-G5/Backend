@@ -3,7 +3,8 @@ use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode_config};
 use futures::channel::oneshot;
-use rocket::{self, config, config::Config, http::Status, response::status, *};
+use rocket::{self, config, config::Config, http::Status, http::Method, get, routes, response::status, *};
+use rocket_cors::{self, AllowedHeaders, AllowedOrigins, Cors, CorsOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
 use std::{io::Read, sync::mpsc, sync::Mutex, usize};
@@ -18,9 +19,21 @@ pub fn run_server(sender: mpsc::Sender<Operation>, port: u16) {
         .finalize()
         .expect("failed build rocket config");
 
+    // You can also deserialize this
+    let cors = rocket_cors::CorsOptions {
+        allowed_origins: AllowedOrigins::all(),
+        allowed_headers: AllowedHeaders::some(&["Content-Type"]),
+        allowed_methods: vec![Method::Get,Method::Post,Method::Put,Method::Delete,Method::Options].into_iter().map(From::from).collect(),
+        allow_credentials: true,
+        ..Default::default()
+    }
+    .to_cors()
+    .expect("failed build rocket cors config");
+
     rocket::custom(config)
         .mount("/", routes![index, dump_graph, tx_post, tx_get, peer])
         .manage(Mutex::new(sender))
+        .attach(cors)
         .launch();
 }
 
