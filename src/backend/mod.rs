@@ -372,9 +372,7 @@ impl Backend {
 
         // Current block to wait for
         let send_fn = |network: &Network, cur_idx, target_addr, ref mut send_time| {
-            if let Err(_) = network
-                .unicast(Packet::GetBlock(cur_idx), &target_addr)
-            {
+            if let Err(_) = network.unicast(Packet::GetBlock(cur_idx), &target_addr) {
                 println!("Failed to send block request to node during initial setup, timeout.");
                 return false;
             }
@@ -405,6 +403,8 @@ impl Backend {
                             Packet::PostBlock(block, idx) => {
                                 if idx == cur_idx {
                                     if let Some(block) = block {
+                                        self.miner.on_block_recv(&block);
+
                                         // Got block, add to chain and go on to the
                                         // next index.
                                         println!("\npushing: {}", block);
@@ -413,7 +413,8 @@ impl Backend {
                                             "Failed to push block when building initial chain",
                                         );
                                         cur_idx += 1;
-                                        if !send_fn(&self.network, cur_idx, target_addr, send_time) {
+                                        if !send_fn(&self.network, cur_idx, target_addr, send_time)
+                                        {
                                             break 'outer;
                                         }
                                     } else {
