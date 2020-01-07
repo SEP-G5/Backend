@@ -305,8 +305,12 @@ impl Backend {
             }
             Packet::GetBlockByHash(hash) => {
                 let chain = self.chain.get_chain_for_block_hash(&hash);
-                let block = chain.last().unwrap().clone().clone();
-                let packet = Packet::PostBlock(Some(block), (chain.len() - 1) as u64);
+                let packet = if !chain.is_empty() {
+                    let block = chain.last().unwrap().clone().clone();
+                    Packet::PostBlock(Some(block), (chain.len() - 1) as u64)
+                } else {
+                    Packet::PostBlock(None, 0)
+                };
                 let _ = self.network.unicast(packet, &from);
             }
             Packet::PeerShuffleReq(peers) => {

@@ -103,8 +103,11 @@ impl Network {
     ) -> Result<(), NetError> {
         let mut pstr = format!("{:?}", packet);
         pstr.truncate(16);
-        println!("unicasting packet [{}{}]", pstr,
-                 if pstr.len()==16 { ".."} else { "" });
+        println!(
+            "unicasting packet [{}{}]",
+            pstr,
+            if pstr.len() == 16 { ".." } else { "" }
+        );
         let nodes = &mut self.state.lock().await.b2n_tx;
         if let Some(tx) = nodes.get_mut(&addr) {
             match tx.send((packet.clone(), None)).await {
