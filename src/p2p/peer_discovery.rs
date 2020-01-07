@@ -5,6 +5,7 @@ use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
+use rand::Rng;
 
 #[derive(PartialEq, Debug)]
 enum PeerDiscState {
@@ -47,12 +48,18 @@ pub struct PeerDisc {
     /// The node we will do shuffle with.
     shuffle_node: Option<NodeInfo>,
 
+    /// State change timer.
     timer: Instant,
+
+    /// How long until we change our state.
+    shuffle_timeout: Duration,
+
     shuffle_at_start: bool,
 }
 
 impl PeerDisc {
     pub fn new() -> PeerDisc {
+        let mut rng = rand::thread_rng();
         PeerDisc {
             state: PeerDiscState::Init,
             neighbor_nodes: Vec::new(),
@@ -60,6 +67,7 @@ impl PeerDisc {
             shuffle_nodes: Vec::new(),
             shuffle_node: None,
             timer: Instant::now(),
+            shuffle_timeout: Duration::from_secs(rng.gen_range(5, 30)),
             shuffle_at_start: false,
         }
     }
@@ -116,6 +124,12 @@ impl PeerDisc {
         self.print_neighbors();
     }
 
+    fn reset_timer(&mut self) {
+        self.timer = Instant::now();
+        let mut rng = rand::thread_rng();
+        self.shuffle_timeout = Duration::from_secs(rng.gen_range(60, 180));
+    }
+
     /// We got a shuffle response
     pub fn on_peer_shuffle_resp(
         &mut self,
@@ -142,7 +156,8 @@ impl PeerDisc {
 
                     self.shuffle_node = None;
                     self.shuffle_nodes.clear();
-                    self.timer = Instant::now();
+                    self.reset_timer();
+
                 } else {
                     self.shuffle_node = None;
                     println!(
@@ -154,7 +169,7 @@ impl PeerDisc {
                         let nodes = self.shuffle_nodes.iter().map(|node| node.addr).collect();
                         self.connect_to_addrs(nodes, network);
                         self.shuffle_nodes.clear();
-                        self.timer = Instant::now();
+                        self.reset_timer();
                     } else {
                         self.state = PeerDiscState::Shuffle;
                     }
@@ -211,7 +226,7 @@ impl PeerDisc {
                 .collect();
             packet = Packet::PeerShuffleResp(Some(nodes));
             println!("[PeerDisc:on_peer_shuffle_req] sending resp Some");
-            self.timer = Instant::now();
+            self.reset_timer();
 
             Self::clean_addrs(&mut peers, from);
             self.connect_to_addrs(peers, network);
@@ -275,16 +290,15 @@ impl PeerDisc {
                 return;
             } else {
                 // TODO have this shuffle timer be random?
-                const SHUFFLE_TIMER: Duration = Duration::from_secs(120);
-                if self.timer.elapsed() > SHUFFLE_TIMER || self.shuffle_at_start {
+                if self.timer.elapsed() > self.shuffle_timeout || self.shuffle_at_start {
                     if self.neighbor_nodes.len() == 0 && !self.shuffle_at_start {
                         println!("[PeerDisc:state_wait] no neighbor nodes, do init");
                         self.state = PeerDiscState::Init;
-                        self.timer = Instant::now();
+                        self.reset_timer();
                     } else {
                         println!("[PeerDisc:state_wait] shuffle");
                         self.state = PeerDiscState::Shuffle;
-                        self.timer = Instant::now();
+                        self.reset_timer();
                     }
                     self.shuffle_at_start = false;
                 }
@@ -339,7 +353,7 @@ impl PeerDisc {
             self.connect_to_addr(node_info.addr, network);
         }
         self.shuffle_nodes.clear();
-        self.timer = Instant::now();
+        self.reset_timer();
         self.state = PeerDiscState::Wait;
     }
 
@@ -347,7 +361,7 @@ impl PeerDisc {
         if self.neighbor_nodes.len() == 0 {
             println!("[PeerDisc:state_shuffle] no neighbor nodes, do init");
             self.state = PeerDiscState::Init;
-            self.timer = Instant::now();
+            self.reset_timer();
             return;
         }
 
@@ -381,7 +395,7 @@ impl PeerDisc {
                 self.shuffle_node.as_ref().unwrap().addr.clone(),
                 Instant::now(),
             );
-            self.timer = Instant::now();
+            self.reset_timer();
         }
     }
 
@@ -435,7 +449,7 @@ impl PeerDisc {
         });
 
         self.state = PeerDiscState::Wait;
-        self.timer = Instant::now();
+        self.reset_timer();
     }
 
     fn print_neighbors(&self) {
