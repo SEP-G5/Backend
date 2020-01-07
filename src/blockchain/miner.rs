@@ -106,4 +106,18 @@ impl Miner {
 
         None
     }
+
+    pub fn on_block_recv(&mut self, block: &BlockType) {
+        // Check currently mined block
+        let reset = match &self.mined {
+            Some(b) => b.get_data() == block.get_data(),
+            None => false,
+        };
+        if reset {
+            self.mined = None;
+        }
+
+        // Check queue
+        self.queue.retain(|tx| tx != block.get_data());
+    }
 }

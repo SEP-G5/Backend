@@ -271,6 +271,8 @@ impl Backend {
                             }
                         }
                     } else {
+                        self.miner.on_block_recv(&block);
+
                         // Where do we add this new block in the chain? Is the
                         // location (using parent hash) actually valid.
                         let at_idx = self
