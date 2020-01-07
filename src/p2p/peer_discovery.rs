@@ -60,7 +60,7 @@ impl PeerDisc {
             shuffle_nodes: Vec::new(),
             shuffle_node: None,
             timer: Instant::now(),
-            shuffle_at_start: true,
+            shuffle_at_start: false,
         }
     }
 
@@ -327,6 +327,22 @@ impl PeerDisc {
         self.print_neighbors();
     }
 
+    /// Abort the ongoing shuffle.
+    /// Will drop the shuffle node
+    fn abort_shuffle(&mut self, network: &Network) {
+        if self.state != PeerDiscState::Shuffle {
+            return;
+        }
+        self.shuffle_node = None;
+        let tmp = self.shuffle_nodes.clone();
+        for node_info in tmp.iter() {
+            self.connect_to_addr(node_info.addr, network);
+        }
+        self.shuffle_nodes.clear();
+        self.timer = Instant::now();
+        self.state = PeerDiscState::Wait;
+    }
+
     fn state_shuffle(&mut self, network: &Network) {
         if self.neighbor_nodes.len() == 0 {
             println!("[PeerDisc:state_shuffle] no neighbor nodes, do init");
@@ -348,19 +364,25 @@ impl PeerDisc {
         nodes.push(my_addr);
         let packet = Packet::PeerShuffleReq(nodes);
         println!("[PeerDisc:state_shuffle] sending req");
-        if let Err(e) = network.unicast(packet, &self.shuffle_node.as_ref().unwrap().addr) {
+        let raddr = &self.shuffle_node.as_ref().unwrap().addr;
+        if let Err(e) = network.unicast(packet, raddr) {
             println!(
                 "[PeerDisc:state_shuffle] failed to talk with node {} with error [{:?}]",
-                self.shuffle_node.as_ref().unwrap().addr,
+                raddr,
                 e
             );
+            self.neighbor_nodes.retain(|addr| {
+                &addr.addr != raddr
+            });
+            self.abort_shuffle(network);
+        } else {
+            self.state = PeerDiscState::Wait;
+            self.pending_resp.insert(
+                self.shuffle_node.as_ref().unwrap().addr.clone(),
+                Instant::now(),
+            );
+            self.timer = Instant::now();
         }
-        self.state = PeerDiscState::Wait;
-        self.pending_resp.insert(
-            self.shuffle_node.as_ref().unwrap().addr.clone(),
-            Instant::now(),
-        );
-        self.timer = Instant::now();
     }
 
     fn state_init(&mut self, network: &Network) {
@@ -423,6 +445,7 @@ impl PeerDisc {
         });
     }
 
+    /// From an address, connect to it and make it a neighbor.
     fn connect_to_addr(&mut self, addr: SocketAddr, network: &Network) {
         if network.is_my_addr(&addr) {
             return;

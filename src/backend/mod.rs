@@ -78,6 +78,7 @@ impl Backend {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         self.initial_setup();
+        println!("done init setup\n\n\n");
 
         // Wait on messages
         loop {
@@ -172,7 +173,7 @@ impl Backend {
     fn mine(&mut self) {
         match self.miner.mine(&self.chain) {
             Some(block) => {
-                //println!("Successfully mined a block");
+                println!("Successfully mined a block");
                 match self.chain.push(block.clone(), false) {
                     Ok(idx) => {
                         self.network.broadcast(Packet::PostBlock(Some(block), idx));
@@ -237,7 +238,9 @@ impl Backend {
     fn handle_packet(&mut self, packet: Packet, from: SocketAddr) {
         match packet {
             Packet::PostBlock(block, idx) => {
-                println!("got block");
+                let mut pstr = format!("{:?}", block);
+                pstr.truncate(30);
+                println!("got block [{}:{}]", idx, pstr);
                 if let Some(block) = block {
                     // Remove identical from backlog
                     let len_before = self.backlog.len();
@@ -289,6 +292,7 @@ impl Backend {
             }
             Packet::GetBlock(idx) => {
                 let longest_chain = self.chain.get_longest_chain();
+                println!("GetBlock: {}", idx);
                 if let Some(t_blk) = longest_chain.get(idx as usize) {
                     let blk = Some((*t_blk).clone());
                     match self.network.unicast(Packet::PostBlock(blk, idx), &from) {
@@ -365,31 +369,31 @@ impl Backend {
         };
 
         // Current block to wait for
-        let mut cur_idx = 1;
-        const TIMEOUT: Duration = Duration::from_millis(500);
-        'outer: loop {
-            // Request the block
-            if let Err(_) = self
-                .network
+        let send_fn = |network: &Network, cur_idx, target_addr, ref mut send_time| {
+            if let Err(_) = network
                 .unicast(Packet::GetBlock(cur_idx), &target_addr)
             {
-                println!("Failed to send block request to node during initial setup");
+                println!("Failed to send block request to node during initial setup, timeout.");
+                return false;
+            }
+            *send_time = Instant::now();
+            return true;
+        };
+        let mut cur_idx = 1;
+        const TIMEOUT: Duration = Duration::from_millis(5000);
+        'outer: loop {
+            // Request the block
+            let send_time = Instant::now();
+            if !send_fn(&self.network, cur_idx, target_addr, send_time) {
                 break 'outer;
             }
-            let mut send_time = Instant::now();
 
             // Wait for block
             loop {
                 // Resend if the operation timed out
                 if send_time.elapsed() > TIMEOUT {
-                    if let Err(_) = self
-                        .network
-                        .unicast(Packet::GetBlock(cur_idx), &target_addr)
-                    {
-                        println!("Failed to send block request to node during initial setup");
-                        break 'outer;
-                    }
-                    send_time = Instant::now();
+                    println!("timeout");
+                    break 'outer;
                 }
 
                 let res = self.network.try_recv();
@@ -407,6 +411,9 @@ impl Backend {
                                             "Failed to push block when building initial chain",
                                         );
                                         cur_idx += 1;
+                                        if !send_fn(&self.network, cur_idx, target_addr, send_time) {
+                                            break 'outer;
+                                        }
                                     } else {
                                         // Index matched but there are not block for
                                         // it. This means we are done.
