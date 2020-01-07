@@ -4,7 +4,7 @@ use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode_config};
 use futures::channel::oneshot;
 use rocket::{self, config, config::Config, http::Status, http::Method, get, routes, response::status, *};
-use rocket_cors::{self, AllowedHeaders, AllowedOrigins, Cors, CorsOptions};
+use rocket_cors::{self, AllowedHeaders, AllowedOrigins};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
 use std::{io::Read, sync::mpsc, sync::Mutex, usize};
