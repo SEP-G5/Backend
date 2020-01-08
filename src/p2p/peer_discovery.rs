@@ -67,8 +67,8 @@ impl PeerDisc {
             shuffle_nodes: Vec::new(),
             shuffle_node: None,
             timer: Instant::now(),
-            shuffle_timeout: Duration::from_secs(rng.gen_range(2, 7)),
-            shuffle_at_start: false,
+            shuffle_timeout: Duration::from_secs(rng.gen_range(5, 10)),
+            shuffle_at_start: true,
         }
     }
 
@@ -152,10 +152,13 @@ impl PeerDisc {
                         let mut peers: Vec<SocketAddr> = peers.unwrap();
                         Self::clean_addrs(&mut peers, from);
                         self.connect_to_addrs(peers, network);
-                        // TODO maybe we close even if !has_peers?
+                    }
+
+                    if self.neighbor_nodes.len() > 1 {
                         let sffl_addr = self.shuffle_node.as_ref().unwrap().addr.clone();
                         self.neighbor_nodes.retain(|addr| addr.addr != sffl_addr);
                         network.close_node_from_addr(&sffl_addr);
+                        println!("=^= =^= closed shuffle node")
                     }
 
                     self.shuffle_node = None;
