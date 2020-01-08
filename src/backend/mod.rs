@@ -202,10 +202,12 @@ impl Backend {
     }
 
     fn backlog_push(&mut self, block: BlockType) {
-        let packet = Packet::GetBlockByHash(block.get_parent_hash().clone());
-        self.network.broadcast(packet);
-        self.backlog.push(block);
-        //println!("[BACKLOG] Added | Len: {}", self.backlog.len());
+        if !self.backlog.contains(&block) {
+            let packet = Packet::GetBlockByHash(block.get_parent_hash().clone());
+            self.network.broadcast(packet);
+            self.backlog.push(block);
+            //println!("[BACKLOG] Added | Len: {}", self.backlog.len());
+        }
     }
 
     fn handle_backlog(&mut self) {
