@@ -116,7 +116,8 @@ impl Transaction {
     /// signature. Store the signature in itself.
     pub(crate) fn sign(&mut self, sk: &SecretKey) {
         let buf = self.content_to_u8();
-        let sig = sign(buf.as_slice(), &sk);
+        let buf = hash::obj_hash(&buf);
+        let sig = sign(&buf, &sk);
         self.signature = sig;
     }
 
@@ -149,7 +150,8 @@ impl Transaction {
             match verify(sig, &pk) {
                 Ok(m) => {
                     let content = self.content_to_u8();
-                    if content == m {
+                    let content = hash::obj_hash(&content);
+                    if content == &m[..] {
                         return Ok(());
                     } else {
                         return Err(format!("content does not match the signature"));
