@@ -162,9 +162,9 @@ impl Chain {
 
         // Check that parent does not already have this as child
         if parent_index < self.nodes.len() - 1 {
-            let node = self.nodes.last().unwrap();
+            let node = self.nodes.get(parent_index + 1).unwrap();
             for b in node.get_blocks().iter() {
-                if b.get_data().get_signature() == block.get_data().get_signature() {
+                if b.get_data() == block.get_data() {
                     if b.calc_hash() == block.calc_hash() {
                         return Err(ChainErr::AlreadyPresent);
                     }
