@@ -218,6 +218,10 @@ impl Backend {
             for i in 0..self.backlog.len() {
                 let block = self.backlog.get(i).unwrap();
                 if self.chain.could_push(block, false).is_ok() {
+                    // Make sure we do not continue mining the transaction
+                    self.miner.on_block_recv(&block);
+
+                    // Remove block and push on chain
                     let block = self.backlog.remove(i);
                     match self.chain.push(block.clone(), false) {
                         Ok(_) => {}
@@ -228,6 +232,8 @@ impl Backend {
                             }
                         },
                     };
+
+                    // Continue
                     changes = true;
                     break;
                 }
