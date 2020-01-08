@@ -22,7 +22,7 @@ const DOT_FILL_COLOR: &str = "#ffffff";
 const DOT_SPEC_COLOR: &str = "#9e141b";
 
 // Hash end pattern
-const HASH_END_PATTERN: &str = "000";
+const HASH_END_PATTERN: &str = "00000";
 
 // ========================================================================== //
 

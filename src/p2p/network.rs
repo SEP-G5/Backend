@@ -102,11 +102,11 @@ impl Network {
         addr: &SocketAddr,
     ) -> Result<(), NetError> {
         let mut pstr = format!("{:?}", packet);
-        pstr.truncate(16);
+        pstr.truncate(30);
         println!(
             "unicasting packet [{}{}] to [{}]",
             pstr,
-            if pstr.len() == 16 { ".." } else { "" },
+            if pstr.len() == 30 { ".." } else { "" },
             addr
         );
         let nodes = &mut self.state.lock().await.b2n_tx;
