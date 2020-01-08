@@ -54,6 +54,13 @@ impl Node {
                 self.get_addr(),
                 state.b2n_tx.len()
             );
+            /*
+            print!("== == == nodes");
+            for (addr, _) in &state.b2n_tx {
+                print!("\n\t{}", addr);
+            }
+            println!("");
+             */
         }
 
         while let Some(res) = self.next().await {

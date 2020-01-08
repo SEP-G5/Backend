@@ -173,7 +173,7 @@ impl Backend {
     fn mine(&mut self) {
         match self.miner.mine(&self.chain) {
             Some(block) => {
-                println!("Successfully mined a block");
+                println!("\n** Successfully mined a block *#*#*#*#*#*#*#*#*#*");
                 match self.chain.push(block.clone(), false) {
                     Ok(idx) => {
                         self.network.broadcast(Packet::PostBlock(Some(block), idx));

@@ -2,10 +2,10 @@ use crate::p2p::network::Network;
 use crate::p2p::packet::Packet;
 use futures::executor::block_on;
 use rand::seq::SliceRandom;
+use rand::Rng;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
-use rand::Rng;
 
 #[derive(PartialEq, Debug)]
 enum PeerDiscState {
@@ -67,7 +67,7 @@ impl PeerDisc {
             shuffle_nodes: Vec::new(),
             shuffle_node: None,
             timer: Instant::now(),
-            shuffle_timeout: Duration::from_secs(rng.gen_range(5, 30)),
+            shuffle_timeout: Duration::from_secs(rng.gen_range(2, 7)),
             shuffle_at_start: false,
         }
     }
@@ -127,7 +127,7 @@ impl PeerDisc {
     fn reset_timer(&mut self) {
         self.timer = Instant::now();
         let mut rng = rand::thread_rng();
-        self.shuffle_timeout = Duration::from_secs(rng.gen_range(60, 180));
+        self.shuffle_timeout = Duration::from_secs(rng.gen_range(4, 8));
     }
 
     /// We got a shuffle response
@@ -152,12 +152,15 @@ impl PeerDisc {
                         let mut peers: Vec<SocketAddr> = peers.unwrap();
                         Self::clean_addrs(&mut peers, from);
                         self.connect_to_addrs(peers, network);
+                        // TODO maybe we close even if !has_peers?
+                        let sffl_addr = self.shuffle_node.as_ref().unwrap().addr.clone();
+                        self.neighbor_nodes.retain(|addr| addr.addr != sffl_addr);
+                        network.close_node_from_addr(&sffl_addr);
                     }
 
                     self.shuffle_node = None;
                     self.shuffle_nodes.clear();
                     self.reset_timer();
-
                 } else {
                     self.shuffle_node = None;
                     println!(
@@ -382,12 +385,9 @@ impl PeerDisc {
         if let Err(e) = network.unicast(packet, raddr) {
             println!(
                 "[PeerDisc:state_shuffle] failed to talk with node {} with error [{:?}]",
-                raddr,
-                e
+                raddr, e
             );
-            self.neighbor_nodes.retain(|addr| {
-                &addr.addr != raddr
-            });
+            self.neighbor_nodes.retain(|addr| &addr.addr != raddr);
             self.abort_shuffle(network);
         } else {
             self.state = PeerDiscState::Wait;
@@ -453,10 +453,16 @@ impl PeerDisc {
     }
 
     fn print_neighbors(&self) {
-        println!("~#~ Neighbor nodes:");
-        self.neighbor_nodes.iter().for_each(|node| {
+        println!("~#~ Neighbor nodes ({}):", self.neighbor_nodes.len());
+        let mut i = 0;
+        for node in self.neighbor_nodes.iter() {
+            i += 1;
+            if i > 5 {
+                println!("\t... ({} more)", self.neighbor_nodes.len() - 5);
+                break;
+            }
             println!("\t{}", node.addr);
-        });
+        }
     }
 
     /// From an address, connect to it and make it a neighbor.

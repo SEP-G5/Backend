@@ -3,7 +3,9 @@ use crate::blockchain::transaction::{PubKey, Signature, Transaction};
 use crate::blockchain::util::Timestamp;
 use base64::{decode_config, encode_config};
 use futures::channel::oneshot;
-use rocket::{self, config, config::Config, http::Status, http::Method, get, routes, response::status, *};
+use rocket::{
+    self, config, config::Config, get, http::Method, http::Status, response::status, routes, *,
+};
 use rocket_cors::{self, AllowedHeaders, AllowedOrigins};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
@@ -23,7 +25,16 @@ pub fn run_server(sender: mpsc::Sender<Operation>, port: u16) {
     let cors = rocket_cors::CorsOptions {
         allowed_origins: AllowedOrigins::all(),
         allowed_headers: AllowedHeaders::some(&["Content-Type"]),
-        allowed_methods: vec![Method::Get,Method::Post,Method::Put,Method::Delete,Method::Options].into_iter().map(From::from).collect(),
+        allowed_methods: vec![
+            Method::Get,
+            Method::Post,
+            Method::Put,
+            Method::Delete,
+            Method::Options,
+        ]
+        .into_iter()
+        .map(From::from)
+        .collect(),
         allow_credentials: true,
         ..Default::default()
     }
