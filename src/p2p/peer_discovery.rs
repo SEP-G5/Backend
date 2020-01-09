@@ -67,7 +67,7 @@ impl PeerDisc {
             shuffle_nodes: Vec::new(),
             shuffle_node: None,
             timer: Instant::now(),
-            shuffle_timeout: Duration::from_secs(rng.gen_range(5, 10)),
+            shuffle_timeout: Duration::from_secs(rng.gen_range(30, 60)),
             shuffle_at_start: true,
         }
     }
@@ -127,7 +127,7 @@ impl PeerDisc {
     fn reset_timer(&mut self) {
         self.timer = Instant::now();
         let mut rng = rand::thread_rng();
-        self.shuffle_timeout = Duration::from_secs(rng.gen_range(4, 8));
+        self.shuffle_timeout = Duration::from_secs(rng.gen_range(30, 90));
     }
 
     /// We got a shuffle response
@@ -158,7 +158,6 @@ impl PeerDisc {
                         let sffl_addr = self.shuffle_node.as_ref().unwrap().addr.clone();
                         self.neighbor_nodes.retain(|addr| addr.addr != sffl_addr);
                         network.close_node_from_addr(&sffl_addr);
-                        println!("=^= =^= closed shuffle node")
                     }
 
                     self.shuffle_node = None;
@@ -325,11 +324,26 @@ impl PeerDisc {
     /// Prepare the data required for a shuffle.
     /// self.shuffle_nodes will only be filled if it is cleared before calling.
     fn prepare_shuffle(&mut self, network: &Network) {
-        // TODO instead of just shuffleing random, take the age of the node
-        // into consideration.
+        if self.neighbor_nodes.is_empty() {
+            return;
+        }
+
         self.neighbor_nodes.shuffle(&mut rand::thread_rng());
 
-        if self.shuffle_nodes.len() == 0 && self.neighbor_nodes.len() > 1 {
+        let mut index = 0;
+        let mut age = 0;
+        for (i, node_info) in self.neighbor_nodes.iter().enumerate() {
+            if node_info.age > age {
+                index = i;
+                age = node_info.age;
+            }
+        }
+        self.shuffle_node = Some(self.neighbor_nodes.swap_remove(index));
+        println!("Selecting node {} with age {}",
+                 self.shuffle_node.as_ref().unwrap().addr,
+                 self.shuffle_node.as_ref().unwrap().age);
+
+        if self.shuffle_nodes.len() == 0 && self.neighbor_nodes.len() > 0 {
             self.shuffle_nodes = self.neighbor_nodes.split_off(self.neighbor_nodes.len() / 2);
             self.shuffle_nodes.iter().for_each(|node| {
                 network.close_node_from_addr(&node.addr);
@@ -341,9 +355,7 @@ impl PeerDisc {
             );
         }
 
-        if self.neighbor_nodes.len() > 0 {
-            self.shuffle_node = Some(self.neighbor_nodes[0].clone());
-        }
+        self.neighbor_nodes.push(self.shuffle_node.as_ref().unwrap().clone());
         self.print_neighbors();
     }
 
