@@ -250,16 +250,6 @@ impl Backend {
                 pstr.truncate(30);
                 println!("got block [{}:{}]", idx, pstr);
                 if let Some(block) = block {
-                    // Remove identical from backlog
-                    let len_before = self.backlog.len();
-                    self.backlog.retain(|b| b != &block);
-                    let len_after = self.backlog.len();
-                    if len_after < len_before {
-                        //println!(
-                        //    "DID REMOVE {} DUPLICATES FROM BACKLOG",
-                        //    len_before - len_after
-                        //);
-                    }
 
                     // Is this block valid to be placed in the blockchain?
                     if let Err(e) = self.chain.could_push(&block, false) {
