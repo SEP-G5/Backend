@@ -278,12 +278,14 @@ impl Backend {
                         // location (using parent hash) actually valid.
                         let at_idx = self
                             .chain
-                            .push(block, false)
+                            .push(block.clone(), false)
                             .expect("Failed to push recieved block (network)");
                         assert_eq!(
                             idx, at_idx,
                             "Got block that was inserted correctly at the wrong index"
                         );
+
+                        self.network.broadcast(Packet::PostBlock(Some(block), idx));
 
                         // Handle backlog
                         self.handle_backlog();
