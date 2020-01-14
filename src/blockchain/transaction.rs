@@ -1,7 +1,8 @@
 use crate::blockchain::hash::{self, Hash, Hashable};
 use crate::blockchain::util;
 use rust_sodium::crypto::sign::{
-    self, ed25519::sign, ed25519::verify, ed25519::PublicKey, ed25519::SecretKey,
+    self, ed25519, ed25519::sign_detached, ed25519::verify_detached, ed25519::PublicKey,
+    ed25519::SecretKey,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
@@ -116,9 +117,7 @@ impl Transaction {
     /// signature. Store the signature in itself.
     pub(crate) fn sign(&mut self, sk: &SecretKey) {
         let buf = self.content_to_u8();
-        let sig = sign(buf.as_slice(), &sk);
-        //let buf = hash::obj_hash(&buf);
-        //let sig = sign(&buf, &sk);
+        let sig = Vec::from(sign_detached(buf.as_slice(), &sk).as_ref());
         self.signature = sig;
     }
 
@@ -151,22 +150,19 @@ impl Transaction {
 
             let ccc = self.content_to_u8();
             println!("[CONTENT BYTES]: {:?}", ccc);
-            let ccc = hash::obj_hash(&ccc);
-            let ccc_str = hash::hash_to_str(&ccc);
-            println!("[CONTENT HASH]: {:?} or \"{}\"", ccc, ccc_str);
+            println!("[CONTENT LEN]: {}", ccc.len());
+            println!("[SIG BYTES]: {:?}", sig);
+            println!("[SIG LEN]: {}", sig.len());
 
-            match verify(sig, &pk) {
-                Ok(m) => {
-                    let content = self.content_to_u8();
-                    if content == m {
-                        //let content = hash::obj_hash(&content);
-                        //if content == &m[..] {
-                        return Ok(());
-                    } else {
-                        return Err(format!("content does not match the signature"));
-                    }
+            let sig = match ed25519::Signature::from_slice(sig) {
+                Some(sig) => sig,
+                None => {
+                    return Err(format!("signature has invalid format"));
                 }
-                Err(_) => return Err(format!("signature is not valid")),
+            };
+            match verify_detached(&sig, &self.content_to_u8(), &pk) {
+                true => return Ok(()),
+                false => return Err(format!("signature is not valid")),
             };
         };
 
