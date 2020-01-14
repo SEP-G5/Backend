@@ -140,8 +140,8 @@ impl Transaction {
     ///   "Transfer": There is a input, use the public key of the input.
     pub fn verify(&self) -> Result<(), String> {
         let do_verify = |pk: &[u8], sig: &[u8]| -> Result<(), String> {
-            //println!("pk len: {}, sig len: {}", pk.len(), sig.len());
-            //println!("pk: {:?}", pk);
+            println!("pk len: {}, sig len: {}", pk.len(), sig.len());
+            println!("pk: {:?}", pk);
             let pk = PublicKey::from_slice(pk);
             let pk = match pk {
                 Some(p) => p,
