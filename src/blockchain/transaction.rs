@@ -116,8 +116,9 @@ impl Transaction {
     /// signature. Store the signature in itself.
     pub(crate) fn sign(&mut self, sk: &SecretKey) {
         let buf = self.content_to_u8();
-        let buf = hash::obj_hash(&buf);
-        let sig = sign(&buf, &sk);
+        let sig = sign(buf.as_slice(), &sk);
+        //let buf = hash::obj_hash(&buf);
+        //let sig = sign(&buf, &sk);
         self.signature = sig;
     }
 
@@ -140,18 +141,26 @@ impl Transaction {
     ///   "Transfer": There is a input, use the public key of the input.
     pub fn verify(&self) -> Result<(), String> {
         let do_verify = |pk: &[u8], sig: &[u8]| -> Result<(), String> {
-            //println!("pk len: {}, sig len: {}", pk.len(), sig.len());
-            //println!("pk: {:?}", pk);
+            println!("pk len: {}, sig len: {}", pk.len(), sig.len());
+            println!("pk: {:?}", pk);
             let pk = PublicKey::from_slice(pk);
             let pk = match pk {
                 Some(p) => p,
                 None => return Err(format!("could not create public key from input")),
             };
+
+            let ccc = self.content_to_u8();
+            println!("[CONTENT BYTES]: {:?}", ccc);
+            let ccc = hash::obj_hash(&ccc);
+            let ccc_str = hash::hash_to_str(&ccc);
+            println!("[CONTENT HASH]: {:?} or \"{}\"", ccc, ccc_str);
+
             match verify(sig, &pk) {
                 Ok(m) => {
                     let content = self.content_to_u8();
-                    let content = hash::obj_hash(&content);
-                    if content == &m[..] {
+                    if content == m {
+                        //let content = hash::obj_hash(&content);
+                        //if content == &m[..] {
                         return Ok(());
                     } else {
                         return Err(format!("content does not match the signature"));
